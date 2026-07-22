@@ -71,7 +71,7 @@ details[open] .tri { transform: rotate(180deg); }
 .is-hero .summary-wrap { cursor: default; }
 .is-hero .summary-wrap p { -webkit-line-clamp: unset; font-size: 0.95rem; line-height: 1.7; max-width: 62ch; }
 .is-hero .summary-wrap .fade { opacity: 0; }
-.is-hero .bias-inline { display: block; max-width: 26rem; }
+.is-hero .bias-inline { display: block; }
 .is-hero .hero-badge { display: inline-flex; }
 /* 티커 → 카드 도착 하이라이트 (2초간 은은한 블루 링) */
 .flash-ring { animation: flashRing 1s ease-in-out 2; }
@@ -218,6 +218,15 @@ tabs.forEach(function (tab) {
   tab.addEventListener("click", function () {
     revealBatch(Infinity);
     updateHero();
+  });
+});
+
+// ── 헤드라인 펼침: 토글은 버튼 행에, 본문은 카드 전체 폭으로 ──
+document.querySelectorAll("details.headlines-toggle").forEach(function (d) {
+  d.addEventListener("toggle", function () {
+    var foot = d.closest(".card-foot");
+    var body = foot && foot.querySelector(".headlines-body");
+    if (body) body.hidden = !d.open;
   });
 });
 
@@ -988,16 +997,21 @@ def _render_issue(issue: dict, index: int) -> str:
     <span class="fade"></span>
   </div>
   <div class="bias-inline hidden mb-3.5">{_render_bias_bar(issue.get("bias"))}</div>
-  <div class="flex items-center gap-2 border-t border-stone-200 dark:border-neutral-700 pt-3">
-    <details class="flex-1">
-      <summary class="list-none [&::-webkit-details-marker]:hidden cursor-pointer select-none inline-flex items-center gap-1.5 rounded-lg border border-stone-200 dark:border-neutral-600 px-3 py-1.5 text-xs font-medium text-blue-600 dark:text-blue-400 hover:bg-stone-100 dark:hover:bg-neutral-700">
-        매체별 헤드라인 {len(heads)}건 <span class="tri">▾</span>
-      </summary>
-      <div class="mt-3">{_render_bias_bar(issue.get("bias"))}</div>
-      <ul class="relative ml-1.5 pl-4 border-l-2 border-stone-200 dark:border-neutral-700 flex flex-col gap-3">{rows}</ul>
-    </details>
-    <button type="button" class="share-btn shrink-0 self-start rounded-lg border border-stone-200 dark:border-neutral-600 px-3 py-1.5 text-xs text-neutral-500 dark:text-neutral-400 hover:text-blue-600 hover:border-blue-500" data-anchor="{anchor}" data-title="{_esc(issue["label"])}" data-text="{_esc(issue["summary"])}">공유</button>
-    <button type="button" class="imgsave-btn shrink-0 self-start rounded-lg border border-stone-200 dark:border-neutral-600 px-3 py-1.5 text-xs text-neutral-500 dark:text-neutral-400 hover:text-blue-600 hover:border-blue-500" title="인스타그램용 정사각 이미지로 저장">이미지 저장</button>
+  <div class="card-foot border-t border-stone-200 dark:border-neutral-700 pt-3">
+    <div class="flex items-center gap-2">
+      <details class="headlines-toggle">
+        <summary class="list-none [&::-webkit-details-marker]:hidden cursor-pointer select-none inline-flex items-center gap-1.5 rounded-lg border border-stone-200 dark:border-neutral-600 px-3 py-1.5 text-xs font-medium text-blue-600 dark:text-blue-400 hover:bg-stone-100 dark:hover:bg-neutral-700">
+          매체별 헤드라인 {len(heads)}건 <span class="tri">▾</span>
+        </summary>
+      </details>
+      <span class="flex-1"></span>
+      <button type="button" class="share-btn shrink-0 rounded-lg border border-stone-200 dark:border-neutral-600 px-3 py-1.5 text-xs text-neutral-500 dark:text-neutral-400 hover:text-blue-600 hover:border-blue-500" data-anchor="{anchor}" data-title="{_esc(issue["label"])}" data-text="{_esc(issue["summary"])}">공유</button>
+      <button type="button" class="imgsave-btn shrink-0 rounded-lg border border-stone-200 dark:border-neutral-600 px-3 py-1.5 text-xs text-neutral-500 dark:text-neutral-400 hover:text-blue-600 hover:border-blue-500" title="인스타그램용 정사각 이미지로 저장">이미지 저장</button>
+    </div>
+    <div class="headlines-body mt-3" hidden>
+      {_render_bias_bar(issue.get("bias"))}
+      <ul class="relative ml-1.5 mt-3 pl-4 border-l-2 border-stone-200 dark:border-neutral-700 flex flex-col gap-3">{rows}</ul>
+    </div>
   </div>
 </article>"""
 
