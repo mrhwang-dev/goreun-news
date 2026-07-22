@@ -567,7 +567,7 @@ renderAuth();
 var obModal = document.getElementById("onboard-modal");
 if (obModal && !localStorage.getItem("goreun_onboarded")) {
   var OB_STEPS = [
-    { e: "⚖️", t: "고른뉴스에 오신 것을 환영합니다", d: "60여 개 언론사의 헤드라인을 교차 확인해, 감정적 표현을 걷어낸 중립 브리핑을 매시간 자동으로 만듭니다." },
+    { e: "⚖️", t: "고른뉴스에 오신 것을 환영합니다", d: "67개 언론사의 헤드라인을 교차 확인해, 감정적 표현을 걷어낸 중립 브리핑을 매시간 자동으로 만듭니다." },
     { e: "🎨", t: "성향 스펙트럼", d: "각 이슈를 어떤 성향의 매체들이 보도했는지 진보-중도-보수 분포 바로 보여줍니다. 카드를 펼치면 매체별 원문 제목을 시간순 타임라인으로 비교할 수 있어요." },
     { e: "🕳️", t: "블라인드스팟", d: "한쪽 성향 매체만 보도한 이슈를 따로 모아 보여줍니다. 내 피드에서 놓치기 쉬운 관점을 확인하세요." },
     { e: "🔍", t: "프레임 체크", d: "같은 사건을 두고 매체들이 제목에서 어떤 단어를 골랐는지 AI가 해부합니다. 분포가 아니라 언어에서 프레임을 직접 목격하세요." },
@@ -585,7 +585,7 @@ if (obModal && !localStorage.getItem("goreun_onboarded")) {
     document.getElementById("ob-emoji").textContent = s.e;
     document.getElementById("ob-title").textContent = s.t;
     document.getElementById("ob-desc").textContent = s.d;
-    document.getElementById("ob-prev").style.visibility = obIdx === 0 ? "hidden" : "visible";
+    document.getElementById("ob-prev").hidden = obIdx === 0;
     document.getElementById("ob-next").textContent = obIdx === OB_STEPS.length - 1 ? "시작하기" : "다음";
     Array.prototype.forEach.call(dots.children, function (d, i) {
       d.className = "w-2 h-2 rounded-full " + (i === obIdx ? "bg-blue-600" : "bg-stone-300 dark:bg-neutral-600");
