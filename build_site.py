@@ -44,11 +44,20 @@ FAVICON_SVG = "data:image/svg+xml," + urllib.parse.quote(
 def ad_slot(unit_id: str) -> str:
     """광고 슬롯 모듈 — CLS 방지를 위해 min-h 고정 + 로드 전 스켈레톤 배경.
 
-    승인 후 이 div 내부에 AdSense/AdFit 코드를 삽입한다 (unit_id로 슬롯 구분).
+    ADSENSE_CLIENT_ID 설정 시 구글 애드센스 코드를 자동 게재합니다.
     """
+    if config.ADSENSE_CLIENT_ID:
+        return f"""<div class="ad-unit relative overflow-hidden rounded-xl border border-stone-200 dark:border-neutral-700 min-h-[250px] flex items-center justify-center bg-stone-50 dark:bg-neutral-900" data-ad-unit="{unit_id}">
+  <ins class="adsbygoogle"
+       style="display:block;width:100%;height:100%"
+       data-ad-client="{_esc(config.ADSENSE_CLIENT_ID)}"
+       data-ad-format="auto"
+       data-full-width-responsive="true"></ins>
+  <script>(adsbygoogle = window.adsbygoogle || []).push({});</script>
+</div>"""
     return f"""<div class="ad-unit relative overflow-hidden rounded-xl border border-stone-200 dark:border-neutral-700 min-h-[250px] flex items-center justify-center" data-ad-unit="{unit_id}">
   <div class="absolute inset-0 animate-pulse bg-gradient-to-br from-stone-100 to-stone-200 dark:from-neutral-800 dark:to-neutral-700" aria-hidden="true"></div>
-  <span class="relative text-neutral-400 text-xs">광고 영역 ({unit_id}) — AdSense/카카오 AdFit 코드 삽입</span>
+  <span class="relative text-neutral-400 text-xs">광고 영역 ({unit_id}) — ADSENSE_CLIENT_ID 설정 시 자동 게재</span>
 </div>"""
 
 DISCLAIMER = (
@@ -971,6 +980,12 @@ def _page(
             f'<script src="https://js.sentry-cdn.com/{config.SENTRY_LOADER_KEY}.min.js" '
             'crossorigin="anonymous"></script>'
         )
+    adsense_script = ""
+    if config.ADSENSE_CLIENT_ID:
+        adsense_script = (
+            f'<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client={_esc(config.ADSENSE_CLIENT_ID)}" '
+            'crossorigin="anonymous"></script>'
+        )
     return f"""<!doctype html>
 <html lang="ko" data-generated-at="{_esc(generated_at)}" data-feed="{feed}">
 <head>
@@ -978,6 +993,7 @@ def _page(
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{_esc(title)}</title>
 <meta name="description" content="여러 언론사의 헤드라인을 교차 확인해 매시간 정리하는 중립 뉴스 브리핑">
+{adsense_script}
 {head_extra}
 <link rel="icon" href="{FAVICON_SVG}">
 <link rel="manifest" href="{asset_prefix}site.webmanifest">

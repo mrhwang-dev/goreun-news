@@ -132,6 +132,10 @@ OUTLET_BIAS = {
 NEWSLETTER_FORM_ACTION = os.environ.get("NEWSLETTER_FORM_ACTION", "")
 NEWSLETTER_FORM_ENTRY = os.environ.get("NEWSLETTER_FORM_ENTRY", "")
 
+# 구글 애드센스 연동 설정 (예: ca-pub-XXXXXXXXXXXXXXXX)
+# GitHub Actions Variables 또는 .env에 ADSENSE_CLIENT_ID 등록 시 자동 반영
+ADSENSE_CLIENT_ID = os.environ.get("ADSENSE_CLIENT_ID", "")
+
 # ── 모델/사이트 ─────────────────────────────────────────────────────────
 # 다중 모델 라우팅: Gemini(대규모 1차 분류) + Claude(상위 이슈 정밀 요약)
 # 비용을 줄이려면 BRIEFING_MODEL=claude-haiku-4-5 로 변경.
