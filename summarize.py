@@ -219,7 +219,7 @@ def label_clusters(clusters: list[list[dict]]) -> dict[int, dict]:
 
 # ── 2단계: Claude 정밀 요약 (상위 핫이슈 편향 교차 검증) ────────────────
 
-BIAS_KO = {"progressive": "진보", "moderate": "중도", "conservative": "보수"}
+BIAS_KO = {"progressive": "진보", "moderate": "중도", "conservative": "보수", "unknown": "분류 없음"}
 
 
 def refine_top_issues(issues: list[dict], top_n: int | None = None) -> None:

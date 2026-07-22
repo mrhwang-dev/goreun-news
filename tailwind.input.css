@@ -38,6 +38,8 @@ details[open] .tri { transform: rotate(180deg); }
 /* 히어로는 성향 바를 상시 노출하므로 펼침 본문 안의 중복 바는 숨김 */
 .is-hero .headlines-body > [aria-label="보도 매체 성향 분포"] { display: none; }
 .is-hero .headlines-body > ul { margin-top: 0; }
+/* 키워드 팔로우 매칭 카드 강조 */
+.kw-hit { @apply ring-2 ring-amber-400 dark:ring-amber-500/70; }
 /* 티커 → 카드 도착 하이라이트 (2초간 은은한 블루 링) */
 .flash-ring { animation: flashRing 1s ease-in-out 2; }
 @keyframes flashRing {

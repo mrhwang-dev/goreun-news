@@ -131,6 +131,7 @@ def build_briefing() -> dict:
                         "title": m["title"],
                         "link": m["link"],
                         "time": m["ts"].astimezone(timezone(timedelta(hours=9))).strftime("%H:%M"),
+                        "bias": config.OUTLET_BIAS.get(m["outlet"]) or "unknown",
                     }
                     for m in sorted(cluster, key=lambda m: m["ts"])[
                         -config.MAX_HEADLINES_PER_ISSUE :
@@ -161,6 +162,31 @@ def build_briefing() -> dict:
         policy = []
     print(f"정책 브리핑 {len(policy)}건")
 
+    # 블라인드스팟: 한쪽 성향 매체만 보도한 이슈 (Ground News 방식)
+    label_to_idx = {issue["label"]: i for i, issue in enumerate(selected)}
+
+    def _blindspot_entry(issue):
+        return {
+            "label": issue["label"],
+            "outlet_count": issue["outlet_count"],
+            "link": issue["headlines"][0]["link"] if issue["headlines"] else "",
+            "issue_index": label_to_idx.get(issue["label"]),
+        }
+
+    def _only(side_a, side_b):
+        found = [
+            i for i in issues_all
+            if i["bias"].get(side_a, 0) >= 2 and i["bias"].get(side_b, 0) == 0
+        ]
+        found.sort(key=lambda i: i["outlet_count"], reverse=True)
+        return [_blindspot_entry(i) for i in found[:4]]
+
+    blindspot = {
+        # 진보 매체가 다루지 않은(보수만 보도) 이슈 / 그 반대
+        "progressive_missing": _only("conservative", "progressive"),
+        "conservative_missing": _only("progressive", "conservative"),
+    }
+
     # 속보 → 해당 이슈 카드 매핑 (티커 클릭 시 카드로 스크롤)
     link_to_idx = {
         link: i for i, issue in enumerate(selected) for link in issue.get("_links", [])
@@ -174,6 +200,7 @@ def build_briefing() -> dict:
         "heat": {c: round(h, 2) for c, h in sorted(heat.items(), key=lambda x: -x[1])},
         "slots": slots,
         "breaking": breaking,
+        "blindspot": blindspot,
         "issues": [
             {k: v for k, v in issue.items() if k not in ("latest_ts", "_links")}
             | {"latest_ts": issue["latest_ts"].isoformat()}

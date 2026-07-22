@@ -186,13 +186,138 @@ tabs.forEach(function (tab) {
 });
 
 // ── 헤드라인 펼침: 토글은 버튼 행에, 본문은 카드 전체 폭으로 ──
+// 펼칠 때 조회 집계(abacus)도 1회 기록 → '많이 본 이슈' 랭킹의 재료
+function djb2(s) {
+  var h = 5381;
+  for (var i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) >>> 0;
+  return h.toString(36);
+}
+var ABACUS = "https://abacus.jasoncameron.dev/";
 document.querySelectorAll("details.headlines-toggle").forEach(function (d) {
   d.addEventListener("toggle", function () {
     var foot = d.closest(".card-foot");
     var body = foot && foot.querySelector(".headlines-body");
     if (body) body.hidden = !d.open;
+    if (d.open && !d._viewed) {
+      d._viewed = true;
+      var card = d.closest("article");
+      var label = card && card.querySelector("h3");
+      if (label) fetch(ABACUS + "hit/goreun-news/iv-" + djb2(label.textContent)).catch(function () {});
+    }
   });
 });
+
+// ── 많이 본 이슈 TOP 5 (상위 18개 카드의 조회수 조회) ──
+var tvPanel = document.getElementById("top-viewed-panel");
+if (tvPanel) {
+  var tvCards = Array.prototype.slice.call(document.querySelectorAll("article[data-cat]")).slice(0, 18);
+  Promise.all(tvCards.map(function (card) {
+    var label = (card.querySelector("h3") || {}).textContent || "";
+    return fetch(ABACUS + "get/goreun-news/iv-" + djb2(label))
+      .then(function (r) { return r.json(); })
+      .then(function (d) { return { card: card, label: label, n: d.value || 0 }; })
+      .catch(function () { return { card: card, label: label, n: 0 }; });
+  })).then(function (res) {
+    var top = res.filter(function (x) { return x.n > 0; })
+      .sort(function (a, b) { return b.n - a.n; }).slice(0, 5);
+    if (!top.length) return;
+    tvPanel.hidden = false;
+    var ol = document.getElementById("top-viewed");
+    top.forEach(function (x, i) {
+      var li = document.createElement("li");
+      var a = document.createElement("a");
+      a.className = "flex items-start gap-2 py-1.5 text-[13px] border-t border-stone-100 dark:border-neutral-700/60 first:border-0 hover:text-blue-600 dark:hover:text-blue-400";
+      a.href = "#" + x.card.id;
+      var rank = document.createElement("span");
+      rank.className = "font-bold text-neutral-300 dark:text-neutral-600 tabular-nums shrink-0";
+      rank.textContent = String(i + 1);
+      var t = document.createElement("span");
+      t.className = "flex-1 min-w-0 line-clamp-2";
+      t.textContent = x.label;
+      a.appendChild(rank); a.appendChild(t);
+      li.appendChild(a);
+      ol.appendChild(li);
+    });
+  });
+}
+
+// ── 성향순/시간순 정렬 토글 (좌/우 프레이밍 비교) ──
+var BIAS_ORDER = { progressive: 0, moderate: 1, unknown: 2, conservative: 3 };
+document.querySelectorAll(".sort-toggle").forEach(function (btn) {
+  btn.addEventListener("click", function () {
+    var ul = btn.closest(".headlines-body").querySelector("ul");
+    var lis = Array.prototype.slice.call(ul.children);
+    var toBias = btn.dataset.mode !== "bias";
+    lis.sort(function (a, b) {
+      if (toBias) return (BIAS_ORDER[a.dataset.b] || 0) - (BIAS_ORDER[b.dataset.b] || 0);
+      return a.dataset.t < b.dataset.t ? -1 : 1;
+    });
+    lis.forEach(function (li) { ul.appendChild(li); });
+    btn.dataset.mode = toBias ? "bias" : "time";
+    btn.textContent = toBias ? "시간순 보기" : "성향순 보기";
+  });
+});
+
+// ── 키워드 팔로우: 등록 키워드 포함 이슈 상단 고정 + 강조 ──
+var KW_KEY = "goreun_keywords";
+function loadKws() {
+  try { return JSON.parse(localStorage.getItem(KW_KEY)) || []; } catch (e) { return []; }
+}
+function saveKws(list) { localStorage.setItem(KW_KEY, JSON.stringify(list)); }
+function renderKws() {
+  var box = document.getElementById("kw-list");
+  if (!box) return;
+  box.textContent = "";
+  loadKws().forEach(function (kw) {
+    var chip = document.createElement("button");
+    chip.type = "button";
+    chip.className = "inline-flex items-center gap-1 rounded-full bg-amber-100 dark:bg-amber-500/20 text-amber-800 dark:text-amber-300 text-xs px-2.5 py-1";
+    chip.textContent = "🔔 " + kw + " ✕";
+    chip.title = "키워드 삭제";
+    chip.addEventListener("click", function () {
+      saveKws(loadKws().filter(function (k) { return k !== kw; }));
+      document.querySelectorAll(".kw-hit").forEach(function (c) { c.classList.remove("kw-hit"); });
+      renderKws();
+      applyKws();
+    });
+    box.appendChild(chip);
+  });
+}
+function applyKws() {
+  var kws = loadKws();
+  if (!kws.length) { updateHero(); return; }
+  var feed = document.querySelector('section[aria-label="주요 이슈"]');
+  if (!feed) return;
+  var matched = [];
+  feed.querySelectorAll("article[data-cat]").forEach(function (card) {
+    var txt = ((card.querySelector("h3") || {}).textContent || "") + " " +
+      ((card.querySelector(".summary-wrap p") || {}).textContent || "");
+    if (kws.some(function (k) { return txt.indexOf(k) >= 0; })) matched.push(card);
+  });
+  matched.reverse().forEach(function (card) {
+    card.classList.add("kw-hit");
+    card.classList.remove("not-revealed");
+    feed.insertBefore(card, feed.firstChild);
+  });
+  updateHero();
+}
+var kwForm = document.getElementById("kw-form");
+if (kwForm) {
+  kwForm.addEventListener("submit", function (e) {
+    e.preventDefault();
+    var input = document.getElementById("kw-input");
+    var kw = input.value.trim();
+    if (!kw) return;
+    var list = loadKws();
+    if (list.indexOf(kw) < 0 && list.length < 10) { list.push(kw); saveKws(list); }
+    input.value = "";
+    renderKws();
+    applyKws();
+    toast("'" + kw + "' 키워드를 팔로우합니다");
+  });
+  renderKws();
+  applyKws();
+}
 
 // ── AI 요약 3줄 클램프: 클릭 시 부드럽게 펼침 ──
 document.querySelectorAll(".summary-wrap").forEach(function (wrap) {
@@ -939,9 +1064,10 @@ def _render_issue(issue: dict, index: int) -> str:
         },
         ensure_ascii=False,
     ))
+    bias_dots = {"progressive": "#3b82f6", "moderate": "#9ca3af", "conservative": "#ef4444", "unknown": "#d6d3d1"}
     # 수직 타임라인: 송고 시간순(1보 → 최신)으로 사건의 흐름을 보여준다
     rows = "".join(
-        f'<li class="relative">'
+        f'<li class="relative" data-b="{_esc(h.get("bias", "unknown"))}" data-t="{_esc(h.get("time", ""))}">'
         f'<span class="absolute -left-[21px] top-1 w-2.5 h-2.5 rounded-full bg-white dark:bg-neutral-800 border-2" style="border-color:{color}" aria-hidden="true"></span>'
         + f'<a class="flex items-start gap-2 text-[13px] hover:text-blue-600 dark:hover:text-blue-400" '
         f'href="{_esc(h["link"])}" target="_blank" rel="noopener nofollow">'
@@ -951,7 +1077,7 @@ def _render_issue(issue: dict, index: int) -> str:
             else ""
         )
         + f'{_favicon(h["link"])}'
-        f'<span class="min-w-0"><b class="font-semibold text-neutral-400 text-xs mr-1.5">{_esc(h["outlet"])}</b>'
+        f'<span class="min-w-0"><b class="font-semibold text-xs mr-1.5" style="color:{bias_dots.get(h.get("bias", "unknown"), "#9ca3af")}">{_esc(h["outlet"])}</b>'
         f'{_esc(h["title"])}</span></a></li>'
         for h in heads
     )
@@ -985,6 +1111,7 @@ def _render_issue(issue: dict, index: int) -> str:
       <button type="button" class="imgsave-btn shrink-0 rounded-lg border border-stone-200 dark:border-neutral-600 px-3 py-1.5 text-xs text-neutral-500 dark:text-neutral-400 hover:text-blue-600 hover:border-blue-500" title="인스타그램용 정사각 이미지로 저장">이미지 저장</button>
     </div>
     <div class="headlines-body mt-3" hidden>
+      <div class="flex justify-end -mb-1"><button type="button" class="sort-toggle text-[10px] text-neutral-400 hover:text-blue-600 dark:hover:text-blue-400" data-mode="time">성향순 보기</button></div>
       {_render_bias_bar(issue.get("bias"))}
       <ul class="relative ml-1.5 mt-3 pl-4 border-l-2 border-stone-200 dark:border-neutral-700 flex flex-col gap-3">{rows}</ul>
     </div>
@@ -992,7 +1119,49 @@ def _render_issue(issue: dict, index: int) -> str:
 </article>"""
 
 
-def _render_sidebar(policy: list[dict]) -> str:
+def _render_blindspot(blindspot: dict | None) -> str:
+    """블라인드스팟 — 한쪽 성향 매체만 보도한 이슈 (Ground News 방식)."""
+    if not blindspot:
+        return ""
+    groups = [
+        ("progressive_missing", "보수 매체만 보도", "#ef4444", "진보 매체가 다루지 않은 이슈"),
+        ("conservative_missing", "진보 매체만 보도", "#3b82f6", "보수 매체가 다루지 않은 이슈"),
+    ]
+    def _bs_row(it: dict, color: str) -> str:
+        if it.get("issue_index") is not None:
+            href = f"#issue-{it['issue_index']}"
+            target = ""
+        else:
+            href = _esc(it["link"])
+            target = ' target="_blank" rel="noopener nofollow"'
+        return (
+            f'<li><a class="flex items-start gap-2 py-1.5 text-[13px] hover:text-blue-600 dark:hover:text-blue-400" '
+            f'href="{href}"{target}>'
+            f'<span class="mt-1.5 w-1.5 h-1.5 rounded-full shrink-0" style="background:{color}"></span>'
+            f'<span class="flex-1 min-w-0 line-clamp-2">{_esc(it["label"])}</span>'
+            f'<span class="text-[10px] text-neutral-400 shrink-0">{it["outlet_count"]}곳</span></a></li>'
+        )
+
+    parts = []
+    for key, title, color, hint in groups:
+        items = blindspot.get(key) or []
+        if not items:
+            continue
+        rows = "".join(_bs_row(it, color) for it in items)
+        parts.append(
+            f'<div class="mt-2 first:mt-0"><h3 class="text-xs font-bold" style="color:{color}" title="{_esc(hint)}">{title}</h3>'
+            f'<ul class="divide-y divide-stone-100 dark:divide-neutral-700/60">{rows}</ul></div>'
+        )
+    if not parts:
+        return ""
+    return f"""<section class="rounded-xl border border-stone-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 p-5">
+  <h2 class="text-sm font-bold mb-0.5">블라인드스팟</h2>
+  <p class="text-[11px] text-neutral-400 mb-2">한쪽 성향 매체만 보도한 이슈 — 놓치기 쉬운 관점입니다</p>
+  {"".join(parts)}
+</section>"""
+
+
+def _render_sidebar(policy: list[dict], blindspot: dict | None = None) -> str:
     items = "".join(
         f"""<div class="policy-item border-t border-stone-200 dark:border-neutral-700 py-3 first:border-0 first:pt-0 last:pb-0">
   <div class="flex items-center justify-between gap-2 mb-1">
@@ -1012,14 +1181,31 @@ def _render_sidebar(policy: list[dict]) -> str:
     </form>
     <p id="newsletter-done" hidden class="text-sm font-medium text-emerald-600 dark:text-emerald-400">구독이 완료되었습니다!</p>
   </section>"""
+    top_viewed = """<section id="top-viewed-panel" hidden class="rounded-xl border border-stone-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 p-5">
+    <h2 class="text-sm font-bold mb-0.5">많이 본 이슈</h2>
+    <p class="text-[11px] text-neutral-400 mb-2">독자들이 많이 펼쳐본 이슈 TOP 5</p>
+    <ol id="top-viewed" class="flex flex-col"></ol>
+  </section>"""
+    keyword_panel = """<section class="rounded-xl border border-stone-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 p-5">
+    <h2 class="text-sm font-bold mb-0.5">키워드 알림</h2>
+    <p class="text-[11px] text-neutral-400 mb-2.5">등록한 키워드가 포함된 이슈를 상단 고정·강조합니다 (이 브라우저에만 저장)</p>
+    <form id="kw-form" class="flex gap-2">
+      <input id="kw-input" type="text" maxlength="20" placeholder="예: 반도체" class="min-w-0 flex-1 rounded-lg border border-stone-300 dark:border-neutral-600 bg-stone-50 dark:bg-neutral-900 px-3 py-1.5 text-sm placeholder:text-neutral-400 focus:outline-none focus:border-blue-500">
+      <button type="submit" class="shrink-0 rounded-lg border border-stone-300 dark:border-neutral-600 px-3 py-1.5 text-sm text-neutral-600 dark:text-neutral-300 hover:border-blue-500 hover:text-blue-600">추가</button>
+    </form>
+    <div id="kw-list" class="flex flex-wrap gap-1.5 mt-2.5"></div>
+  </section>"""
     return f"""<aside class="flex flex-col gap-5 self-start lg:sticky lg:top-20">
+  {_render_blindspot(blindspot)}
   <section class="rounded-xl border border-stone-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 p-5">
     <h2 class="text-sm font-bold mb-0.5">정책 브리핑</h2>
     <p class="text-[11px] text-neutral-400 mb-3">출처: 대한민국 정책브리핑(korea.kr) · 공공누리 제1유형</p>
     {items}
   </section>
+  {top_viewed}
   {ad_slot("sidebar-1")}
   {newsletter_form}
+  {keyword_panel}
   <section class="rounded-xl border border-stone-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 p-5">
     <h2 class="text-sm font-bold mb-0.5">공개 API</h2>
     <p class="text-[11px] text-neutral-400 mb-2.5">이 페이지의 모든 데이터는 JSON으로도 제공됩니다 (매시간 갱신).</p>
@@ -1077,7 +1263,7 @@ def build(
 
     main_html = f"""<div class="grid grid-cols-1 lg:grid-cols-[7fr_3fr] gap-7 py-6">
   <section class="grid sm:grid-cols-2 gap-4 content-start" aria-label="주요 이슈">{"".join(cards)}</section>
-  {_render_sidebar(briefing.get("policy", []))}
+  {_render_sidebar(briefing.get("policy", []), briefing.get("blindspot"))}
 </div>"""
 
     stamp = (
