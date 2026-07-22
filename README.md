@@ -135,7 +135,8 @@ python run.py
 
 ## 배포 도메인
 
-- 현재: `고른뉴스.메인.한국` (내도메인.한국 무료 도메인, CNAME → mrhwang-dev.github.io)
+- 현재: `goreunnews.kro.kr` (내도메인.한국 무료 도메인, CNAME → mrhwang-dev.github.io)
+- 이전: `고른뉴스.메인.한국` — 한글 IDN의 인증서 발급 지연·퓨니코드 URL 문제로 로마자 도메인으로 전환 (웹포워딩 권장)
 - 1순위 후보: `goreun.news` (구매 시 Pages 커스텀 도메인만 교체)
 
 ## 버그 제보 (Sentry)
