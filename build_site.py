@@ -132,6 +132,9 @@ tabs.forEach(function (tab) {
     tab.setAttribute("aria-selected", "true");
     var key = tab.dataset.filter;
     var val = tab.dataset.value;
+    if (key === "cat") {
+      history.replaceState(null, "", val === "전체" ? (window.location.pathname + window.location.search) : "#cat=" + encodeURIComponent(val));
+    }
     document.querySelectorAll("[data-" + key + "]").forEach(function (el) {
       if (val === "전체") {
         // 전체 탭: 3개 이하 매체 보도(minor)는 분야 탭 전용
@@ -1180,7 +1183,7 @@ def _frame_chips(words: list[dict]) -> str:
 def _tab(label: str, count: int, filter_key: str, value: str, selected: bool, dot: str = "") -> str:
     sel = "true" if selected else "false"
     return (
-        f'<button type="button" class="tab shrink-0 inline-flex items-center gap-1.5 rounded-full '
+        f'<button type="button" role="tab" tabindex="0" class="tab shrink-0 inline-flex items-center gap-1.5 rounded-full '
         f'border border-stone-300 dark:border-neutral-600 bg-white dark:bg-neutral-800 '
         f'px-3.5 py-1.5 text-sm focus-visible:outline focus-visible:outline-2 '
         f'focus-visible:outline-blue-500" aria-selected="{sel}" '
@@ -1288,7 +1291,7 @@ def _page(
         )
     )
     tabs_nav = (
-        f'<nav class="flex gap-2 overflow-x-auto no-scrollbar pb-3" aria-label="필터">{tabs_html}</nav>'
+        f'<nav role="tablist" class="flex gap-2 overflow-x-auto no-scrollbar pb-3" aria-label="필터">{tabs_html}</nav>'
         if tabs_html
         else ""
     )
@@ -1329,6 +1332,7 @@ def _page(
 <meta name="description" content="{_esc(description or config.SITE_DESCRIPTION)}">
 {canonical_tag}{robots_tag}{gsc_tag}
 <link rel="alternate" type="application/rss+xml" title="{_esc(config.SITE_TITLE)} RSS" href="https://{config.SITE_DOMAIN}/rss.xml">
+<link rel="alternate" type="application/rss+xml" title="{_esc(config.SITE_TITLE)} 정치 RSS" href="https://{config.SITE_DOMAIN}/rss-정치.xml">\n<link rel="alternate" type="application/rss+xml" title="{_esc(config.SITE_TITLE)} 경제 RSS" href="https://{config.SITE_DOMAIN}/rss-경제.xml">\n<link rel="alternate" type="application/rss+xml" title="{_esc(config.SITE_TITLE)} 사회 RSS" href="https://{config.SITE_DOMAIN}/rss-사회.xml">\n<link rel="alternate" type="application/rss+xml" title="{_esc(config.SITE_TITLE)} 국제 RSS" href="https://{config.SITE_DOMAIN}/rss-국제.xml">\n<link rel="alternate" type="application/rss+xml" title="{_esc(config.SITE_TITLE)} IT·과학 RSS" href="https://{config.SITE_DOMAIN}/rss-IT·과학.xml">\n<link rel="alternate" type="application/rss+xml" title="{_esc(config.SITE_TITLE)} 생활·문화 RSS" href="https://{config.SITE_DOMAIN}/rss-생활·문화.xml">\n
 {adsense_script}
 {seo_meta}
 {head_extra}
@@ -1501,6 +1505,16 @@ def _render_bias_bar(bias: dict | None) -> str:
 
 
 def _render_issue(issue: dict, index: int) -> str:
+    ld_json = json.dumps({
+        "@context": "https://schema.org",
+        "@type": "NewsArticle",
+        "headline": issue.get("label", ""),
+        "description": issue.get("summary", ""),
+        "articleSection": issue.get("category", ""),
+        "datePublished": issue.get("latest_ts", ""),
+        "publisher": { "@type": "Organization", "name": "고른뉴스" }
+    }, ensure_ascii=False)
+    ld_script = f"""<script type="application/ld+json">{ld_json}</script>"""
     heads = issue.get("headlines", [])
     color = CATEGORY_COLORS.get(issue["category"], "#2563eb")
     outlet_count = issue.get("outlet_count", len({h["outlet"] for h in heads}))
@@ -1567,11 +1581,12 @@ def _render_issue(issue: dict, index: int) -> str:
     </span>
     <span class="flex items-center gap-2">
       <span class="text-neutral-400">{outlet_count}개 매체</span>
+      <button type="button" class="tts-btn text-base leading-none text-neutral-300 dark:text-neutral-600 hover:text-blue-500" aria-label="요약 듣기" title="요약 듣기">🔊</button>
       <button type="button" class="scrap-btn text-base leading-none text-neutral-300 dark:text-neutral-600 hover:text-amber-500" aria-label="스크랩" data-scrap="{scrap_payload}">☆</button>
     </span>
   </div>
   <h3 class="fs-t mt-2.5 mb-1.5 font-bold text-[15px] leading-snug break-keep [text-wrap:balance]">{_esc(issue["label"])}</h3>
-  <div class="summary-wrap relative cursor-pointer mb-3.5" title="클릭하면 전체 요약을 봅니다">
+  <div class="summary-wrap relative cursor-pointer mb-3.5" role="button" tabindex="0" aria-expanded="false" title="클릭하면 전체 요약을 봅니다">
     <p class="fs-p text-sm text-neutral-600 dark:text-neutral-300 break-keep">{_esc(issue["summary"])}</p>
     <span class="fade"></span>
   </div>
@@ -1594,6 +1609,7 @@ def _render_issue(issue: dict, index: int) -> str:
       <ul class="relative ml-1.5 mt-3 pl-4 border-l-2 border-stone-200 dark:border-neutral-700 flex flex-col gap-3">{rows}</ul>
     </div>
   </div>
+{ld_script}
 </article>"""
 
 
@@ -2505,6 +2521,9 @@ def build_archive_pages(
         f"생성 시각 {now.strftime('%Y-%m-%d %H:%M KST')}"
     )
     for stamp, briefing in snapshots:
+        if (out_dir / "archive" / stamp / "index.html").exists():
+            print(f"아카이브 {stamp} 이미 존재 — 건너뜀")
+            continue
         cards = "".join(
             _render_issue(issue, i) for i, issue in enumerate(briefing.get("issues", []))
         )
@@ -2586,29 +2605,61 @@ def build_seo_files(
     archive_stamps: list[str] | None = None,
 ) -> None:
     from email.utils import format_datetime
+    import hashlib
 
     base = f"https://{domain}"
     if now.tzinfo is None:
         from datetime import timezone as _tz
         now = now.replace(tzinfo=_tz.utc)
     lastmod = now.strftime("%Y-%m-%dT%H:%M:%SZ")
+    static_lastmod = "2026-07-01T00:00:00Z"
 
     pages = [
-        ("", "1.0", "hourly"),
-        ("blindspot.html", "0.8", "hourly"),
-        ("frame.html", "0.8", "hourly"),
-        ("community.html", "0.8", "hourly"),
-        ("search.html", "0.6", "daily"),
-        ("about.html", "0.5", "monthly"),
-        ("terms.html", "0.2", "yearly"),
-        ("privacy.html", "0.2", "yearly"),
-        ("archive/", "0.5", "hourly"),
-    ] + [(f"archive/{s}/", "0.6", "monthly") for s in (archive_stamps or [])]
-    # scrapbook.html은 개인화 페이지(noindex)이므로 사이트맵에서 제외
+        ("", "1.0", "hourly", lastmod),
+        ("blindspot.html", "0.8", "hourly", lastmod),
+        ("frame.html", "0.8", "hourly", lastmod),
+        ("community.html", "0.8", "hourly", lastmod),
+        ("search.html", "0.6", "daily", static_lastmod),
+        ("about.html", "0.5", "monthly", static_lastmod),
+        ("terms.html", "0.2", "yearly", static_lastmod),
+        ("privacy.html", "0.2", "yearly", static_lastmod),
+        ("scrapbook.html", "0.2", "monthly", static_lastmod),
+        ("archive/", "0.5", "hourly", lastmod),
+    ] + [(f"archive/{s}/", "0.6", "monthly", f"{s[:10]}T{s[11:13]}:00:00Z" if len(s)==13 else f"{s}T00:00:00Z" if len(s)==10 else lastmod) for s in (archive_stamps or [])]
+    
+    # Task 6: category RSS feeds
+    items_by_cat = {}
+    items = []
+    for i, issue in enumerate(briefing.get("issues", [])):
+        cat = issue.get("category", "기타")
+        try:
+            pub = format_datetime(datetime.fromisoformat(issue["latest_ts"]))
+        except (KeyError, ValueError):
+            pub = format_datetime(now)
+        permalink = f"{_SHARE_BASE}#issue-{i}" if _SHARE_BASE else f"{base}/#issue-{i}"
+        links = [h.get("url", "") for h in issue.get("headlines", [])]
+        hash_guid = hashlib.md5(("|".join(sorted(links))).encode()).hexdigest()
+        
+        item_xml = (
+            "<item>"
+            f"<title>{html.escape(issue['label'])}</title>"
+            f"<link>{html.escape(permalink)}</link>"
+            f"<description>{html.escape(issue['summary'])}</description>"
+            f"<category>{html.escape(issue['category'])}</category>"
+            f"<pubDate>{pub}</pubDate>"
+            f'<guid isPermaLink="false">{hash_guid}</guid>'
+            "</item>"
+        )
+        items.append(item_xml)
+        items_by_cat.setdefault(cat, []).append(item_xml)
+        
+    for cat in items_by_cat:
+        pages.append((f"rss-{cat}.xml", "0.5", "hourly", lastmod))
+
     urls = "".join(
-        f"<url><loc>{base}/{path}</loc><lastmod>{lastmod}</lastmod>"
+        f"<url><loc>{base}/{path}</loc><lastmod>{lmod}</lastmod>"
         f"<changefreq>{freq}</changefreq><priority>{prio}</priority></url>"
-        for path, prio, freq in pages
+        for path, prio, freq, lmod in pages if path != "scrapbook.html"
     )
     (out_dir / "sitemap.xml").write_text(
         '<?xml version="1.0" encoding="UTF-8"?>\n'
@@ -2617,24 +2668,6 @@ def build_seo_files(
         encoding="utf-8",
     )
 
-    # RSS: 이슈를 중요도 순(briefing["issues"] 순서 = 점수 순)으로 제공
-    items = []
-    for i, issue in enumerate(briefing.get("issues", [])):
-        try:
-            pub = format_datetime(datetime.fromisoformat(issue["latest_ts"]))
-        except (KeyError, ValueError):
-            pub = format_datetime(now)
-        permalink = f"{_SHARE_BASE}#issue-{i}" if _SHARE_BASE else f"{base}/#issue-{i}"
-        items.append(
-            "<item>"
-            f"<title>{html.escape(issue['label'])}</title>"
-            f"<link>{html.escape(permalink)}</link>"
-            f"<description>{html.escape(issue['summary'])}</description>"
-            f"<category>{html.escape(issue['category'])}</category>"
-            f"<pubDate>{pub}</pubDate>"
-            f'<guid isPermaLink="false">goreun-issue-{html.escape(issue["label"])}</guid>'
-            "</item>"
-        )
     (out_dir / "rss.xml").write_text(
         '<?xml version="1.0" encoding="UTF-8"?>\n'
         '<rss version="2.0"><channel>'
@@ -2646,6 +2679,19 @@ def build_seo_files(
         f"{''.join(items)}</channel></rss>",
         encoding="utf-8",
     )
+
+    for cat, c_items in items_by_cat.items():
+        (out_dir / f"rss-{cat}.xml").write_text(
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<rss version="2.0"><channel>'
+            f"<title>{html.escape(config.SITE_TITLE)} - {html.escape(cat)}</title>"
+            f"<link>{base}/</link>"
+            f"<description>{html.escape(config.SITE_TAGLINE)} — {html.escape(cat)} 분야 뉴스 브리핑</description>"
+            "<language>ko</language>"
+            f"<lastBuildDate>{format_datetime(now)}</lastBuildDate>"
+            f"{''.join(c_items)}</channel></rss>",
+            encoding="utf-8",
+        )
 
     (out_dir / "robots.txt").write_text(
         f"User-agent: *\nAllow: /\n\nSitemap: {base}/sitemap.xml\n", encoding="utf-8"
@@ -2800,6 +2846,7 @@ def build_community_page(
             # 원본 서버 핫링크 소형 썸네일 — 로드 실패 시 자동 숨김
             thumb_html = (
                 f'<img src="{_esc(p["thumb"])}" alt="" loading="lazy" referrerpolicy="no-referrer" '
+                'width="64" height="64" '
                 'class="w-16 h-16 object-cover rounded-lg shrink-0 bg-stone-100 dark:bg-neutral-700" '
                 "onerror=\"this.style.display='none'\">"
             )
@@ -2860,6 +2907,7 @@ def build_community_page(
         if p.get("thumb"):
             thumb_html = (
                 f'<img src="{_esc(p["thumb"])}" alt="" loading="lazy" referrerpolicy="no-referrer" '
+                'width="48" height="48" '
                 'class="w-12 h-12 object-cover rounded-lg shrink-0 bg-stone-100 dark:bg-neutral-700" '
                 "onerror=\"this.style.display='none'\">"
             )
@@ -2921,7 +2969,13 @@ def build_scrapbook_page(
     out_dir: Path, generated_at: str, now: datetime, updated: str, stamp: str
 ) -> Path:
     main_html = """<div class="max-w-3xl mx-auto py-6 flex flex-col gap-6">
-  <h1 class="text-xl font-extrabold tracking-tight">스크랩북</h1>
+  <div class="flex items-center justify-between mb-2">
+    <h1 class="text-xl font-extrabold tracking-tight">스크랩북</h1>
+    <div class="flex gap-2">
+      <button type="button" id="scrap-export" class="text-xs px-2.5 py-1 rounded border border-stone-300 dark:border-neutral-600 bg-white dark:bg-neutral-800 hover:bg-stone-50 dark:hover:bg-neutral-700">내보내기</button>
+      <label class="text-xs px-2.5 py-1 rounded border border-stone-300 dark:border-neutral-600 bg-white dark:bg-neutral-800 hover:bg-stone-50 dark:hover:bg-neutral-700 cursor-pointer">가져오기<input type="file" id="scrap-import" accept=".json" class="hidden"></label>
+    </div>
+  </div>
   <div id="scrap-login-gate" hidden class="text-center py-16">
     <p class="text-sm text-neutral-500 dark:text-neutral-400 mb-4">스크랩북은 로그인 후 이용할 수 있습니다.<br><span class="text-xs text-neutral-400">닉네임만 입력하면 되고, 정보는 이 기기에만 저장됩니다.</span></p>
     <button type="button" id="scrap-gate-login" class="rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-5 py-2">로그인</button>

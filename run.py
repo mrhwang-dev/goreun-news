@@ -98,8 +98,13 @@ def detect_breaking(items: list[dict]) -> list[dict]:
     """[속보]/[1보]/[긴급] 말머리가 붙은 최근 기사를 골라낸다 (제목 원문 유지)."""
     cutoff = datetime.now(timezone.utc) - timedelta(hours=BREAKING_MAX_AGE_HOURS)
     kst = timezone(timedelta(hours=9))
+    # 발행 시각이 추정값(피드에 날짜 없음)인 기사는 제외한다 — 속보는 표시하는
+    # 시각이 실제 발행 시각과 일치해야 하고, 추정 시각으로 최신 여부도 못 믿는다.
     breaking = [
-        it for it in items if BREAKING_RE.search(it["title"]) and it["ts"] >= cutoff
+        it for it in items
+        if BREAKING_RE.search(it["title"])
+        and not it.get("ts_estimated")
+        and it["ts"] >= cutoff
     ]
     breaking.sort(key=lambda it: it["ts"], reverse=True)
     return [

@@ -43,3 +43,19 @@ def test_detect_breaking():
     assert "outlet" in result[0]
     assert "title" in result[0]
     assert "link" in result[0]
+
+
+def test_breaking_excludes_estimated_ts():
+    """발행 시각을 추정한(피드에 날짜 없음) 기사는 속보에서 제외한다 —
+    속보에 표시되는 시각이 실제 발행 시각과 어긋나지 않게."""
+    now = datetime.now(timezone.utc)
+    items = [
+        {"title": "[속보] 실제 발행시각", "ts": now - timedelta(minutes=5),
+         "outlet": "A", "link": "real", "ts_estimated": False},
+        {"title": "[속보] 추정 발행시각", "ts": now - timedelta(minutes=5),
+         "outlet": "B", "link": "est", "ts_estimated": True},
+    ]
+    result = detect_breaking(items)
+    links = [r["link"] for r in result]
+    assert "real" in links
+    assert "est" not in links

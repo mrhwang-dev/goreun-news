@@ -132,10 +132,16 @@ def _fetch_feed_items(feed: dict, cutoff: datetime) -> tuple[list[dict], int]:
             promo_dropped += 1
             continue
         raw_date = _extract_date_str(item)
-        ts = _parse_ts(raw_date) or datetime.now(timezone.utc)
+        parsed_ts = _parse_ts(raw_date)
+        # 발행 시각을 못 읽으면 수집 시각으로 대체하되, 추정값임을 표시한다.
+        # 속보 등 '발행 시각'을 그대로 노출하는 곳에서는 추정값을 쓰지 않는다.
+        ts = parsed_ts or datetime.now(timezone.utc)
         if ts < cutoff:
             continue
-        items.append({"title": title, "link": link, "outlet": feed["outlet"], "ts": ts})
+        items.append({
+            "title": title, "link": link, "outlet": feed["outlet"],
+            "ts": ts, "ts_estimated": parsed_ts is None,
+        })
         feed_count += 1
         if feed_count >= config.MAX_ITEMS_PER_FEED:
             break
