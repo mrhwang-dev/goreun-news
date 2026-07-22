@@ -41,6 +41,7 @@ jobs:
             data/cache.json
             data/community_seen.json
             data/bias_model_state.json
+            data/goreun.db
           key: briefing-cache-${{ github.run_id }}
           restore-keys: briefing-cache-
       - name: Unit tests
@@ -62,6 +63,8 @@ jobs:
             git config user.email "actions@github.com"
             git add archive
             git commit -m "archive: $(date -u +%Y-%m-%dT%H:%M)Z snapshot"
+            # 빌드가 남긴 archive 외 추적 파일 변경(캐시 DB 등)은 리베이스를 막으므로 되돌린다
+            git checkout -- . 2>/dev/null || true
             if ! git pull --rebase -X ours origin main; then
               git rebase --abort
               echo "Rebase failed with conflicts, skipping archive push."
