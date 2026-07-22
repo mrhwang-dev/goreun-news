@@ -120,11 +120,23 @@ def build_briefing(bias_model: dict | None = None) -> dict:
 
     labels = label_clusters(clusters)
 
+    from categorize import classify
+
+    algo_overrides = 0
     issues_all = []
     for ci, cluster in enumerate(clusters):
         meta = labels.get(ci)
         if not meta:
             continue
+        # 분야 분류: 알고리즘(키워드+전문지 사전확률)이 확신하면 LLM 분류를 교체
+        algo_cat, _margin = classify(
+            [m["title"] for m in cluster], [m["outlet"] for m in cluster]
+        )
+        if algo_cat and algo_cat != meta["category"]:
+            meta = {**meta, "category": algo_cat}
+            algo_overrides += 1
+        elif algo_cat:
+            meta = {**meta, "category": algo_cat}
         outlets = {m["outlet"] for m in cluster}
         # 앵커(통념) → 관측 모델 → 분류 없음 순으로 성향 결정 (bias_model.py)
         bias = {"progressive": 0, "moderate": 0, "conservative": 0, "unknown": 0}
@@ -162,6 +174,7 @@ def build_briefing(bias_model: dict | None = None) -> dict:
         pin_top=config.TOP_PIN_COUNT,
         min_slots=config.MIN_SLOTS_PER_CATEGORY,
     )
+    print(f"분야 알고리즘 교정: {algo_overrides}건")
     print("분야별 슬롯:", slots)
 
     # 상위 핫이슈만 Claude 정밀 요약 (편향 교차 검증, 실패 시 1차 요약 유지)
