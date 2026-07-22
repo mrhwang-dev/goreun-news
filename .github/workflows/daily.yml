@@ -62,10 +62,14 @@ jobs:
             git config user.email "actions@github.com"
             git add archive
             git commit -m "archive: $(date -u +%Y-%m-%dT%H:%M)Z snapshot"
-            git pull --rebase origin main
-            if ! git push origin main; then
-              git pull --rebase origin main
-              git push origin main || echo "아카이브 푸시 실패 (다음 실행에서 재시도)"
+            if ! git pull --rebase -X ours origin main; then
+              git rebase --abort
+              echo "Rebase failed with conflicts, skipping archive push."
+            else
+              if ! git push origin main; then
+                git pull --rebase -X ours origin main
+                git push origin main || echo "아카이브 푸시 재시도 실패 (다음 실행에서 재시도)"
+              fi
             fi
           fi
       - uses: actions/upload-pages-artifact@v3
