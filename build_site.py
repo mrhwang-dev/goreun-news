@@ -433,8 +433,8 @@ var BIAS_META = [
   ["conservative", "보수", "#ef4444"],
 ];
 function buildShareCard(card) {
-  var label = (card.querySelector("h3") || {}).textContent || "";
-  var summaryEl = card.querySelector(".summary-wrap p");
+  var label = (card.querySelector("h2, h3") || {}).textContent || "";
+  var summaryEl = card.querySelector(".summary-wrap p") || card.querySelector("p");
   var summary = summaryEl ? summaryEl.textContent : "";
   var catColor = card.style.borderTopColor || "#2563eb";
   var catEl = card.querySelector('span[class*="font-semibold"]');
@@ -548,6 +548,23 @@ if (toTop) {
     var reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     window.scrollTo({ top: 0, behavior: reduced ? "auto" : "smooth" });
   });
+}
+
+// ── 방문자 수 (counterapi.dev — 세션당 1회 집계) ──
+var visitEl = document.getElementById("visit-count");
+if (visitEl) {
+  var kstDay = new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10).replace(/-/g, "");
+  var counted = sessionStorage.getItem("goreun_counted") === kstDay;
+  var base = "https://api.counterapi.dev/v1/goreun-news/";
+  var mode = counted ? "" : "/up";
+  Promise.all([
+    fetch(base + "total" + mode).then(function (r) { return r.json(); }),
+    fetch(base + "day-" + kstDay + mode).then(function (r) { return r.json(); }),
+  ]).then(function (res) {
+    if (!counted) sessionStorage.setItem("goreun_counted", kstDay);
+    visitEl.textContent = "오늘 " + (res[1].count || 0).toLocaleString() + " · 누적 " +
+      (res[0].count || 0).toLocaleString() + "명 방문";
+  }).catch(function () { visitEl.textContent = ""; });
 }
 
 window.sentryOnLoad = function () {
@@ -828,7 +845,7 @@ def _page(
 <footer class="border-t border-stone-200 dark:border-neutral-700 mt-4 py-5 pb-12 text-xs text-neutral-500 dark:text-neutral-400">
   <div class="max-w-6xl mx-auto px-5">
     {notes}
-    <p>{site_stamp}</p>
+    <p class="flex flex-wrap gap-x-3 gap-y-1"><span>{site_stamp}</span><span id="visit-count" class="tabular-nums"></span></p>
   </div>
 </footer>
 <button type="button" id="to-top" hidden aria-label="맨 위로" class="fixed bottom-6 right-5 z-40 w-11 h-11 rounded-full bg-neutral-900 text-stone-50 dark:bg-neutral-100 dark:text-neutral-900 shadow-lg text-lg">↑</button>
@@ -949,6 +966,60 @@ def _render_issue(issue: dict, index: int) -> str:
 </article>"""
 
 
+def _render_hero_issue(issue: dict) -> str:
+    """최다 보도 1위 이슈 — 풀폭 헤드라인 히어로 카드 (AI 요약 전문 노출)."""
+    heads = issue.get("headlines", [])
+    color = CATEGORY_COLORS.get(issue["category"], "#2563eb")
+    outlet_count = issue.get("outlet_count", len({h["outlet"] for h in heads}))
+    bias_attr = _esc(json.dumps(issue.get("bias") or {}, ensure_ascii=False))
+    scrap_payload = _esc(json.dumps(
+        {
+            "id": f"issue:{issue['label']}",
+            "type": "issue",
+            "label": issue["label"],
+            "summary": issue["summary"],
+            "category": issue["category"],
+            "headlines": heads,
+        },
+        ensure_ascii=False,
+    ))
+    rows = "".join(
+        f'<li class="relative">'
+        f'<span class="absolute -left-[21px] top-1 w-2.5 h-2.5 rounded-full bg-white dark:bg-neutral-800 border-2" style="border-color:{color}" aria-hidden="true"></span>'
+        + (
+            f'<time class="block text-[11px] text-neutral-400 tabular-nums leading-tight">{_esc(h["time"])}</time>'
+            if h.get("time")
+            else ""
+        )
+        + f'<a class="flex items-start gap-2 text-[13px] hover:text-blue-600 dark:hover:text-blue-400" '
+        f'href="{_esc(h["link"])}" target="_blank" rel="noopener nofollow">'
+        f'{_favicon(h["link"])}'
+        f'<span class="min-w-0"><b class="font-semibold text-neutral-400 text-xs mr-1.5">{_esc(h["outlet"])}</b>'
+        f'{_esc(h["title"])}</span></a></li>'
+        for h in heads
+    )
+    return f"""<article id="issue-0" class="sm:col-span-2 rounded-2xl border border-stone-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 p-7 border-t-4" style="border-top-color:{color}" data-cat="{_esc(issue["category"])}" data-bias="{bias_attr}">
+  <div class="flex items-center gap-2 text-xs flex-wrap">
+    <span class="font-semibold rounded-full px-2.5 py-0.5" style="color:{color};background:{color}1f">{_esc(issue["category"])}</span>
+    <span class="font-bold rounded-full px-2.5 py-0.5 bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400">📢 {outlet_count}개 매체 집중 보도</span>
+    <button type="button" class="scrap-btn ml-auto text-lg leading-none text-neutral-300 dark:text-neutral-600 hover:text-amber-500" aria-label="스크랩" data-scrap="{scrap_payload}">☆</button>
+  </div>
+  <h2 class="fs-t mt-3.5 mb-3 font-extrabold text-2xl lg:text-[32px] leading-tight tracking-tight [text-wrap:balance]">{_esc(issue["label"])}</h2>
+  <p class="fs-p text-[15px] lg:text-base text-neutral-600 dark:text-neutral-300 leading-relaxed mb-4 max-w-[62ch]">{_esc(issue["summary"])}</p>
+  <div class="max-w-md">{_render_bias_bar(issue.get("bias"))}</div>
+  <div class="flex items-center gap-2 border-t border-stone-200 dark:border-neutral-700 pt-3 mt-1">
+    <details class="flex-1">
+      <summary class="list-none [&::-webkit-details-marker]:hidden cursor-pointer select-none inline-flex items-center gap-1.5 rounded-lg border border-stone-200 dark:border-neutral-600 px-3 py-1.5 text-xs font-medium text-blue-600 dark:text-blue-400 hover:bg-stone-100 dark:hover:bg-neutral-700">
+        매체별 헤드라인 {len(heads)}건 <span class="tri">▾</span>
+      </summary>
+      <ul class="relative ml-1.5 mt-3 pl-4 border-l-2 border-stone-200 dark:border-neutral-700 flex flex-col gap-3">{rows}</ul>
+    </details>
+    <button type="button" class="share-btn shrink-0 self-start rounded-lg border border-stone-200 dark:border-neutral-600 px-3 py-1.5 text-xs text-neutral-500 dark:text-neutral-400 hover:text-blue-600 hover:border-blue-500" data-anchor="issue-0" data-title="{_esc(issue["label"])}" data-text="{_esc(issue["summary"])}">공유</button>
+    <button type="button" class="imgsave-btn shrink-0 self-start rounded-lg border border-stone-200 dark:border-neutral-600 px-3 py-1.5 text-xs text-neutral-500 dark:text-neutral-400 hover:text-blue-600 hover:border-blue-500" title="인스타그램용 정사각 이미지로 저장">이미지 저장</button>
+  </div>
+</article>"""
+
+
 def _render_sidebar(policy: list[dict]) -> str:
     items = "".join(
         f"""<div class="policy-item border-t border-stone-200 dark:border-neutral-700 py-3 first:border-0 first:pt-0 last:pb-0">
@@ -956,7 +1027,7 @@ def _render_sidebar(policy: list[dict]) -> str:
     <h3 class="fs-t text-[13px] font-semibold"><a class="hover:text-blue-600 dark:hover:text-blue-400" href="{_esc(p["link"])}" target="_blank" rel="noopener">{_esc(p["title"])}</a></h3>
     <span class="read-time text-[10px] text-neutral-400 shrink-0"></span>
   </div>
-  <p class="policy-text fs-p text-xs text-neutral-500 dark:text-neutral-400">{_esc(p["summary"])}</p>
+  <p class="policy-text fs-p text-xs text-neutral-500 dark:text-neutral-400 line-clamp-2">{_esc(p["summary"])}</p>
 </div>"""
         for p in policy
     )
@@ -1018,6 +1089,10 @@ def build(briefing: dict, community: list[dict], out_dir: Path) -> Path:
 
     cards = []
     for i, issue in enumerate(issues):
+        if i == 0:
+            # 최다 보도 1위 이슈는 풀폭 헤드라인 히어로로
+            cards.append(_render_hero_issue(issue))
+            continue
         card = _render_issue(issue, i)
         if i >= config.INITIAL_CARDS:
             # 무한 스크롤: 최초 12개 이후는 숨겨 두고 스크롤 시 12개씩 공개

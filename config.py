@@ -46,7 +46,7 @@ MAX_ITEMS_PER_FEED = 40
 # 공공누리 제1유형 — 출처표시 조건으로 상업적 이용·변형(AI 요약) 허용.
 POLICY_LIST_URL = "https://www.korea.kr/news/policyNewsList.do"
 POLICY_VIEW_URL = "https://www.korea.kr/news/policyNewsView.do?newsId={news_id}"
-POLICY_COUNT = 6  # 요약할 정책뉴스 수
+POLICY_COUNT = 4  # 요약할 정책뉴스 수 (사이드바 과밀 방지)
 
 # ── 클러스터링·배분 파라미터 (알고리즘: cluster.py) ─────────────────────
 MAX_ITEM_AGE_HOURS = 24    # 이 시간 이내 기사만 사용
