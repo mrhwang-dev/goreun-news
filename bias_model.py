@@ -31,17 +31,40 @@ import config
 from cluster import char_bigrams, normalize_title, overlap
 
 MARGIN = 0.08      # 이 이상 가까워야 1표
-MIN_VOTES = 12     # 분류에 필요한 최소 표
-THRESHOLD = 0.25   # 진보/보수 판정 점수 경계
+MIN_VOTES = 12     # 분류에 필요한 최소 표 (진입)
+EXIT_VOTES = 8     # 이미 분류된 매체가 분류를 잃는 하한 (이탈 — 히스테리시스)
+THRESHOLD = 0.25   # 진보/보수 판정 점수 경계 (진입)
+EXIT_THRESHOLD = 0.15  # 기존 판정을 유지하는 완화 경계 (이탈 — 히스테리시스)
 
 
-def compute_bias_model(snapshots: list[tuple[str, dict]]) -> dict[str, dict]:
-    """아카이브 스냅샷들로부터 {매체: {lean, score, votes}} 모델을 계산한다."""
+def _issue_key(issue: dict) -> str:
+    """이슈 정체성 키 — 최초 기사 링크(없으면 라벨).
+
+    같은 이슈가 시간별 스냅샷 수십 개에 반복 수록되므로, 스냅샷 단위가 아니라
+    '이슈 단위'로 1표만 세어야 사건 1건의 우연한 유사가 표를 부풀리지 못한다.
+    """
+    heads = issue.get("headlines") or []
+    if heads and heads[0].get("link"):
+        return heads[0]["link"]
+    return issue.get("label", "") or (heads[0]["title"] if heads else "")
+
+
+def compute_bias_model(
+    snapshots: list[tuple[str, dict]], prev_model: dict[str, dict] | None = None
+) -> dict[str, dict]:
+    """아카이브 스냅샷들로부터 {매체: {lean, score, votes}} 모델을 계산한다.
+
+    - (이슈, 매체) 쌍당 1표: 스냅샷 반복 수록에 의한 표 부풀리기 차단
+    - 히스테리시스: 경계(±0.25/12표)에 걸친 매체가 시간마다 플립하지 않도록,
+      직전 판정은 완화 경계(±0.15/8표)를 지키는 한 유지된다
+    """
     votes: dict[str, list[int]] = defaultdict(lambda: [0, 0])  # [진보표, 보수표]
+    voted: set[tuple[str, str]] = set()  # (이슈 키, 매체) — 중복 투표 방지
 
     for _, briefing in snapshots:
         for issue in briefing.get("issues", []):
             heads = issue.get("headlines", [])
+            issue_key = _issue_key(issue)
             prog_feats = [
                 char_bigrams(normalize_title(h["title"]))
                 for h in heads
@@ -57,27 +80,46 @@ def compute_bias_model(snapshots: list[tuple[str, dict]]) -> dict[str, dict]:
             for h in heads:
                 if h["outlet"] in config.OUTLET_BIAS:
                     continue
+                if (issue_key, h["outlet"]) in voted:
+                    continue  # 같은 이슈에는 매체당 1표
                 feat = char_bigrams(normalize_title(h["title"]))
                 s_p = max(overlap(feat, f) for f in prog_feats)
                 s_c = max(overlap(feat, f) for f in cons_feats)
                 if s_p - s_c >= MARGIN:
                     votes[h["outlet"]][0] += 1
+                    voted.add((issue_key, h["outlet"]))
                 elif s_c - s_p >= MARGIN:
                     votes[h["outlet"]][1] += 1
+                    voted.add((issue_key, h["outlet"]))
 
+    prev_model = prev_model or {}
     model: dict[str, dict] = {}
     for outlet, (p, c) in sorted(votes.items()):
         n = p + c
-        if n < MIN_VOTES:
+        score = (p - c) / n if n else 0.0
+        prev_lean = (prev_model.get(outlet) or {}).get("lean")
+
+        if n >= MIN_VOTES:
+            if score >= THRESHOLD:
+                lean = "progressive"
+            elif score <= -THRESHOLD:
+                lean = "conservative"
+            else:
+                lean = "moderate"
+        elif prev_lean and n >= EXIT_VOTES:
+            lean = prev_lean  # 표가 다소 줄어도 기존 판정 유지
+        else:
             model[outlet] = {"lean": None, "score": None, "votes": n}
             continue
-        score = (p - c) / n
-        if score >= THRESHOLD:
-            lean = "progressive"
-        elif score <= -THRESHOLD:
-            lean = "conservative"
-        else:
-            lean = "moderate"
+
+        # 진보/보수였던 매체는 점수가 완화 경계 안쪽으로 무너질 때까지 유지
+        if prev_lean in ("progressive", "conservative") and lean != prev_lean:
+            keeps_direction = (prev_lean == "progressive" and score >= EXIT_THRESHOLD) or (
+                prev_lean == "conservative" and score <= -EXIT_THRESHOLD
+            )
+            if keeps_direction:
+                lean = prev_lean
+
         model[outlet] = {"lean": lean, "score": round(score, 3), "votes": n}
     return model
 

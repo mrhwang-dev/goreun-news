@@ -62,6 +62,39 @@ def test_effective_bias_anchor_first():
     assert effective_bias("조선일보", {"조선일보": {"lean": "progressive"}}) == "conservative"
 
 
+def test_snapshot_repetition_counts_once():
+    # 같은 이슈가 14개 시간별 스냅샷에 반복 수록돼도 (이슈, 매체)당 1표
+    issue = {
+        "headlines": [
+            {"outlet": "경향신문", "title": "노동계 최저임금 재심의 요구", "link": "https://khan/1"},
+            {"outlet": "조선일보", "title": "최저임금 갈등 재계 반발", "link": "https://chosun/1"},
+            {"outlet": "지역지A", "title": "노동계 최저임금 재심의 요구 집회", "link": "https://local/1"},
+        ]
+    }
+    snapshots = [(f"2026-07-22-{h:02d}", {"issues": [issue]}) for h in range(14)]
+    model = compute_bias_model(snapshots)
+    assert model["지역지A"]["votes"] == 1, model
+    assert model["지역지A"]["lean"] is None
+
+
+def test_hysteresis_keeps_prior_lean_near_boundary():
+    # 7:5 표(score≈0.167)는 신규 진입 기준(0.25) 미달이지만,
+    # 직전 판정이 progressive면 완화 경계(0.15) 안이라 유지된다
+    def _iss(i, target_title):
+        return {"headlines": [
+            {"outlet": "경향신문", "title": f"진보 앵커 제목 {i}", "link": f"p{i}"},
+            {"outlet": "조선일보", "title": f"보수 앵커 제목 {i}", "link": f"c{i}"},
+            {"outlet": "테스트지", "title": target_title, "link": f"t{i}"},
+        ]}
+    issues = [_iss(i, f"진보 앵커 제목 {i} 보도") for i in range(7)]
+    issues += [_iss(100 + i, f"보수 앵커 제목 {100 + i} 보도") for i in range(5)]
+    snapshots = [("s", {"issues": issues})]
+    fresh = compute_bias_model(snapshots)
+    assert fresh["테스트지"]["lean"] == "moderate", fresh  # 신규 기준으로는 중도
+    kept = compute_bias_model(snapshots, {"테스트지": {"lean": "progressive"}})
+    assert kept["테스트지"]["lean"] == "progressive", kept  # 히스테리시스로 유지
+
+
 if __name__ == "__main__":
     for name, fn in sorted(globals().items()):
         if name.startswith("test_") and callable(fn):

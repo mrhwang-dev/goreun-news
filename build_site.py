@@ -903,6 +903,25 @@ def _highlight_title(title: str, frame_words: list[dict]) -> str:
     return out
 
 
+def _headline_anchor(h: dict, title_html: str) -> str:
+    """매체 파비콘 + 매체명 + 제목 링크 — 카드·블라인드스팟·프레임 탭 공용."""
+    return (
+        f'<a class="flex items-start gap-2 text-[13px] hover:text-blue-600 dark:hover:text-blue-400" '
+        f'href="{_esc(h["link"])}" target="_blank" rel="noopener nofollow">'
+        f'{_favicon(h["link"])}'
+        f'<span class="min-w-0"><b class="font-semibold text-neutral-400 text-xs mr-1.5">{_esc(h["outlet"])}</b>'
+        f'{title_html}</span></a>'
+    )
+
+
+def _frame_chips(words: list[dict]) -> str:
+    return " · ".join(
+        f'<span style="color:{FRAME_COLORS.get(w.get("side"), "#b45309")}" class="font-semibold">{_esc(w.get("word", ""))}</span>'
+        for w in words
+        if w.get("word")
+    )
+
+
 def _tab(label: str, count: int, filter_key: str, value: str, selected: bool, dot: str = "") -> str:
     sel = "true" if selected else "false"
     return (
@@ -924,7 +943,7 @@ def _page(
     banner_html: str = "", asset_prefix: str = "",
 ) -> str:
     nav = "".join(
-        f'<a href="{href}" class="px-2 py-1 rounded-lg text-sm '
+        f'<a href="{asset_prefix}{href}" class="px-2 py-1 rounded-lg text-sm '
         + (
             "font-bold text-blue-600 dark:text-blue-400"
             if active == key
@@ -1103,11 +1122,7 @@ def _render_issue(issue: dict, index: int) -> str:
 
     framing_html = ""
     if framing.get("note"):
-        chips = " · ".join(
-            f'<span style="color:{FRAME_COLORS.get(w.get("side"), "#b45309")}" class="font-semibold">{_esc(w.get("word", ""))}</span>'
-            for w in frame_words
-            if w.get("word")
-        )
+        chips = _frame_chips(frame_words)
         framing_html = f"""<div class="rounded-lg border border-stone-200 dark:border-neutral-700 bg-stone-50 dark:bg-neutral-900/60 p-3 mb-3">
   <p class="text-[11px] font-bold mb-1">🔍 프레임 체크 — 같은 사건, 다른 단어 <span class="font-normal text-neutral-400">(참고용 AI 분석)</span></p>
   <p class="text-xs text-neutral-600 dark:text-neutral-300">{_esc(framing["note"])}</p>
@@ -1174,8 +1189,8 @@ def _render_blindspot(blindspot: dict | None) -> str:
     if not blindspot:
         return ""
     groups = [
-        ("progressive_missing", "보수 매체만 보도", "#ef4444", "진보 매체가 다루지 않은 이슈"),
-        ("conservative_missing", "진보 매체만 보도", "#3b82f6", "보수 매체가 다루지 않은 이슈"),
+        ("progressive_missing", "보수 매체만 보도", FRAME_COLORS["conservative"], "진보 매체가 다루지 않은 이슈"),
+        ("conservative_missing", "진보 매체만 보도", FRAME_COLORS["progressive"], "보수 매체가 다루지 않은 이슈"),
     ]
     def _bs_row(it: dict, color: str) -> str:
         if it.get("issue_index") is not None:
@@ -1374,8 +1389,8 @@ def build(
 
     build_community_page(community, out_dir, generated_at, now, updated, stamp)
     build_scrapbook_page(out_dir, generated_at, now, updated, stamp)
-    build_blindspot_page(briefing, out_dir, generated_at, now, updated, stamp)
-    build_frame_page(briefing, out_dir, generated_at, now, updated, stamp)
+    build_blindspot_page(briefing, out_dir, generated_at, updated, stamp)
+    build_frame_page(briefing, out_dir, generated_at, updated, stamp)
     build_seo_files(briefing, out_dir, punycode_domain, now, archive_stamps or [])
     return out_dir / "index.html"
 
@@ -1384,7 +1399,7 @@ def build(
 
 
 def build_blindspot_page(
-    briefing: dict, out_dir: Path, generated_at: str, now: datetime, updated: str, stamp: str
+    briefing: dict, out_dir: Path, generated_at: str, updated: str, stamp: str
 ) -> None:
     blindspot = briefing.get("blindspot") or {}
 
@@ -1396,8 +1411,7 @@ def build_blindspot_page(
             card_list = []
             for it in items:
                 heads = "".join(
-                    f'<li><a class="flex items-start gap-2 text-[13px] hover:text-blue-600 dark:hover:text-blue-400" href="{_esc(h["link"])}" target="_blank" rel="noopener nofollow">'
-                    f'{_favicon(h["link"])}<span class="min-w-0"><b class="font-semibold text-neutral-400 text-xs mr-1.5">{_esc(h["outlet"])}</b>{_esc(h["title"])}</span></a></li>'
+                    f"<li>{_headline_anchor(h, _esc(h['title']))}</li>"
                     for h in it.get("headlines", [])
                 )
                 anchor = (
@@ -1423,11 +1437,11 @@ def build_blindspot_page(
   <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
     <section aria-label="진보 매체만 보도">
       <h2 class="text-sm font-bold mb-3 text-blue-600 dark:text-blue-400">🔵 진보 매체만 보도한 이슈</h2>
-      {_column("conservative_missing", "진보 매체만 보도", "#3b82f6")}
+      {_column("conservative_missing", "진보 매체만 보도", FRAME_COLORS["progressive"])}
     </section>
     <section aria-label="보수 매체만 보도">
       <h2 class="text-sm font-bold mb-3 text-red-600 dark:text-red-400">🔴 보수 매체만 보도한 이슈</h2>
-      {_column("progressive_missing", "보수 매체만 보도", "#ef4444")}
+      {_column("progressive_missing", "보수 매체만 보도", FRAME_COLORS["conservative"])}
     </section>
   </div>
 </div>"""
@@ -1452,7 +1466,7 @@ def build_blindspot_page(
 
 
 def build_frame_page(
-    briefing: dict, out_dir: Path, generated_at: str, now: datetime, updated: str, stamp: str
+    briefing: dict, out_dir: Path, generated_at: str, updated: str, stamp: str
 ) -> None:
     framed = [
         (i, issue) for i, issue in enumerate(briefing.get("issues", [])) if issue.get("framing")
@@ -1462,13 +1476,9 @@ def build_frame_page(
     for i, issue in framed:
         framing = issue["framing"]
         words = framing.get("words") or []
-        chips = " · ".join(
-            f'<span style="color:{FRAME_COLORS.get(w.get("side"), "#b45309")}" class="font-semibold">{_esc(w.get("word", ""))}</span>'
-            for w in words if w.get("word")
-        )
+        chips = _frame_chips(words)
         heads = "".join(
-            f'<li><a class="flex items-start gap-2 text-[13px] hover:text-blue-600 dark:hover:text-blue-400" href="{_esc(h["link"])}" target="_blank" rel="noopener nofollow">'
-            f'{_favicon(h["link"])}<span class="min-w-0"><b class="font-semibold text-neutral-400 text-xs mr-1.5">{_esc(h["outlet"])}</b>{_highlight_title(h["title"], words)}</span></a></li>'
+            f"<li>{_headline_anchor(h, _highlight_title(h['title'], words))}</li>"
             for h in issue.get("headlines", [])[:8]
         )
         color = CATEGORY_COLORS.get(issue["category"], "#2563eb")
@@ -1590,14 +1600,16 @@ def build_search_assets(
     같은 라벨의 이슈는 최신 스냅샷 항목이 남는다(오래된 → 최신 순으로 덮어씀).
     결과 링크는 해당 시각 아카이브 스냅샷의 카드 앵커로 연결된다.
     """
-    entries: dict[str, dict] = {}
+    # 키 = (라벨, 날짜): 같은 라벨이라도 날짜가 다르면 별도 항목으로 유지해
+    # 날짜 필터 검색에서 과거 사건이 소실되지 않는다. 같은 날짜 안에서만 최신이 덮어쓴다.
+    entries: dict[tuple[str, str], dict] = {}
     for stamp, brief in sorted(snapshots, key=lambda s: s[0]):
         date = stamp[:10]
         for i, issue in enumerate(brief.get("issues", [])):
             label = issue.get("label")
             if not label:
                 continue
-            entries[label] = {
+            entries[(label, date)] = {
                 "d": date,
                 "t": label,
                 "s": (issue.get("summary") or "")[:120],

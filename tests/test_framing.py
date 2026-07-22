@@ -53,6 +53,10 @@ def test_detect_honorifics():
     found = {h["text"]: h for h in detect_honorifics(heads)}
     assert "李대통령" in found and found["李대통령"]["sides"].get("conservative") == 2
     assert "이재명 대통령" in found
+    # 좌측 경계: 단어 중간을 인명으로 오인하지 않아야 한다
+    bogus = detect_honorifics([{"title": "국민의힘 대표 경선 시작", "bias": "conservative"},
+                               {"title": "더불어민주당 대표 발언", "bias": "progressive"}])
+    assert not [b for b in bogus if b["style"] == "이름+직함"], bogus
 
 
 def test_framing_gate():

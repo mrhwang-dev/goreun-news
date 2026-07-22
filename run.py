@@ -22,6 +22,18 @@ from build_site import build, build_archive_pages
 ROOT = Path(__file__).resolve().parent
 
 ARCHIVE_KEEP = 72  # 사이트에 렌더링할 최근 스냅샷 수 (3일치)
+BIAS_STATE_PATH = ROOT / "data" / "bias_model_state.json"  # 히스테리시스용 직전 판정
+
+
+def _load_snapshots() -> list[tuple[str, dict]]:
+    """아카이브 스냅샷을 최신순으로 1회 로드한다 (성향 모델·렌더링 공용)."""
+    snapshots: list[tuple[str, dict]] = []
+    for f in sorted((ROOT / "archive").glob("*.json"), reverse=True)[:ARCHIVE_KEEP]:
+        try:
+            snapshots.append((f.stem, json.loads(f.read_text(encoding="utf-8"))))
+        except json.JSONDecodeError:
+            continue
+    return snapshots
 
 
 def build_tailwind_css(site_dir: Path) -> None:
@@ -233,13 +245,16 @@ def main() -> None:
         # 성향 관측 모델: 기존 아카이브 스냅샷으로 추정 (매시간 갱신·자가 보정)
         from bias_model import compute_bias_model
 
-        prev_snaps: list[tuple[str, dict]] = []
-        for f in sorted((ROOT / "archive").glob("*.json"), reverse=True)[:ARCHIVE_KEEP]:
-            try:
-                prev_snaps.append((f.stem, json.loads(f.read_text(encoding="utf-8"))))
-            except json.JSONDecodeError:
-                continue
-        bias_model = compute_bias_model(prev_snaps)
+        prev_snaps = _load_snapshots()
+        try:
+            prev_state = json.loads(BIAS_STATE_PATH.read_text(encoding="utf-8"))
+        except (FileNotFoundError, json.JSONDecodeError):
+            prev_state = {}
+        bias_model = compute_bias_model(prev_snaps, prev_state)
+        BIAS_STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
+        BIAS_STATE_PATH.write_text(
+            json.dumps(bias_model, ensure_ascii=False), encoding="utf-8"
+        )
         classified = sum(1 for r in bias_model.values() if r.get("lean"))
         print(f"성향 관측 모델: 표 축적 {len(bias_model)}개 매체, 분류 확정 {classified}개")
 
@@ -260,11 +275,8 @@ def main() -> None:
         (archive_dir / f"{stamp}.json").write_text(
             json.dumps(briefing, ensure_ascii=False), encoding="utf-8"
         )
-        for f in sorted(archive_dir.glob("*.json"), reverse=True)[:ARCHIVE_KEEP]:
-            try:
-                snapshots.append((f.stem, json.loads(f.read_text(encoding="utf-8"))))
-            except json.JSONDecodeError:
-                continue
+        # 재로드 없이 기존 로드분 + 이번 스냅샷으로 구성 (이중 로드 제거)
+        snapshots = ([(stamp, briefing)] + prev_snaps)[:ARCHIVE_KEEP]
         # 공유·RSS 영구 링크는 이번 시각의 스냅샷을 가리킨다
         punycode = config.SITE_DOMAIN.encode("idna").decode()
         build_site.set_share_base(f"https://{punycode}/archive/{stamp}/")

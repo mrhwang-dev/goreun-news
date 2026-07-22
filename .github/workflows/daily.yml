@@ -38,6 +38,7 @@ jobs:
           path: |
             data/cache.json
             data/community_seen.json
+            data/bias_model_state.json
           key: briefing-cache-${{ github.run_id }}
           restore-keys: briefing-cache-
       - name: Unit tests (cluster·framing)

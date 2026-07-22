@@ -283,9 +283,11 @@ def _frame_tokens(title: str) -> set[str]:
 
 
 # 호칭 프레임: 같은 인물을 어떤 표기로 부르는가 (국내 특유의 강력한 신호)
+# 이름 패턴에 좌측 경계(비한글) 필수 — 없으면 '국민의힘 대표'의 끝 3글자
+# '민의힘'을 인명으로 오인한다.
 _HONORIFIC_PATTERNS = [
     ("한자 성+직함", re.compile(r"[一-龥]\s?(?:대통령|대표|시장|지사|총리|장관)")),
-    ("이름+직함", re.compile(r"[가-힣]{3}\s(?:대통령|대표|시장|지사|총리|장관)")),
+    ("이름+직함", re.compile(r"(?<![가-힣])[가-힣]{2,3}\s(?:대통령|대표|시장|지사|총리|장관)")),
 ]
 
 
@@ -299,7 +301,7 @@ def detect_honorifics(headlines: list[dict]) -> list[dict]:
     for h in headlines:
         side = h.get("bias", "unknown")
         for style, pattern in _HONORIFIC_PATTERNS:
-            for m in pattern.findall(h["title"]) if False else pattern.finditer(h["title"]):
+            for m in pattern.finditer(h["title"]):
                 text = m.group(0)
                 rec = found.setdefault(text, {"style": style, "text": text, "sides": {}})
                 rec["sides"][side] = rec["sides"].get(side, 0) + 1

@@ -101,7 +101,7 @@ OUTLET_BIAS = {
     "시사인": "progressive",
     "미디어오늘": "progressive",
     "뉴스프리존": "progressive",
-    # 나머지(경제지·통신·IT·지역지)는 기본값 moderate 처리
+    # 나머지 매체는 '분류 없음'으로 집계되며, 관측 모델(bias_model.py)이 추정한다
     "한국경제": "moderate",
 }
 

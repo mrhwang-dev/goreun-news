@@ -339,17 +339,16 @@ def refine_top_issues(issues: list[dict], top_n: int | None = None) -> None:
         if framing and framing.get("note"):
             if not framing_passes_gate(framing["note"]):
                 print(f"[품질 게이트] 평가어 감지 — framing 폐기: {framing['note'][:50]}")
-                framing = None
-        if framing and framing.get("note"):
-            # 사후 검증: 제목 원문에 실제로 존재하는 단어만 남긴다 (환각 차단)
-            titles = " || ".join(h["title"] for h in targets[i]["headlines"])
-            proposed = framing.get("words") or []
-            framing["words"] = [
-                w for w in proposed if w.get("word") and w["word"] in titles
-            ][:4]
-            if proposed:
-                print(f"[프레임 적중률] {len(framing['words'])}/{len(proposed)}")
-            targets[i]["framing"] = framing
+            else:
+                # 사후 검증: 제목 원문에 실제로 존재하는 단어만 남긴다 (환각 차단)
+                titles = " || ".join(h["title"] for h in targets[i]["headlines"])
+                proposed = framing.get("words") or []
+                framing["words"] = [
+                    w for w in proposed if w.get("word") and w["word"] in titles
+                ][:4]
+                if proposed:
+                    print(f"[프레임 적중률] {len(framing['words'])}/{len(proposed)}")
+                targets[i]["framing"] = framing
         cache["refined"][keys[i]] = {
             "label": targets[i]["label"],
             "summary": targets[i]["summary"],
