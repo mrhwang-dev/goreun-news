@@ -550,21 +550,25 @@ if (toTop) {
   });
 }
 
-// ── 방문자 수 (counterapi.dev — 세션당 1회 집계) ──
+// ── 방문자 수 (abacus.jasoncameron.dev — CORS 지원, 세션당 1회 집계) ──
 var visitEl = document.getElementById("visit-count");
 if (visitEl) {
   var kstDay = new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10).replace(/-/g, "");
   var counted = sessionStorage.getItem("goreun_counted") === kstDay;
-  var base = "https://api.counterapi.dev/v1/goreun-news/";
-  var mode = counted ? "" : "/up";
-  Promise.all([
-    fetch(base + "total" + mode).then(function (r) { return r.json(); }),
-    fetch(base + "day-" + kstDay + mode).then(function (r) { return r.json(); }),
-  ]).then(function (res) {
+  var abacus = "https://abacus.jasoncameron.dev/" + (counted ? "get" : "hit") + "/goreun-news/";
+  function counterValue(key) {
+    return fetch(abacus + key)
+      .then(function (r) { return r.json(); })
+      .then(function (d) { return d.value || 0; })
+      .catch(function () { return 0; });
+  }
+  Promise.all([counterValue("total"), counterValue("day-" + kstDay)]).then(function (res) {
     if (!counted) sessionStorage.setItem("goreun_counted", kstDay);
-    visitEl.textContent = "오늘 " + (res[1].count || 0).toLocaleString() + " · 누적 " +
-      (res[0].count || 0).toLocaleString() + "명 방문";
-  }).catch(function () { visitEl.textContent = ""; });
+    if (res[0] > 0) {
+      visitEl.textContent = "오늘 " + res[1].toLocaleString() + " · 누적 " +
+        res[0].toLocaleString() + "명 방문";
+    }
+  });
 }
 
 window.sentryOnLoad = function () {
