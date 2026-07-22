@@ -73,6 +73,9 @@ details[open] .tri { transform: rotate(180deg); }
 .is-hero .summary-wrap .fade { opacity: 0; }
 .is-hero .bias-inline { display: block; }
 .is-hero .hero-badge { display: inline-flex; }
+/* 히어로는 성향 바를 상시 노출하므로 펼침 본문 안의 중복 바는 숨김 */
+.is-hero .headlines-body > [aria-label="보도 매체 성향 분포"] { display: none; }
+.is-hero .headlines-body > ul { margin-top: 0; }
 /* 티커 → 카드 도착 하이라이트 (2초간 은은한 블루 링) */
 .flash-ring { animation: flashRing 1s ease-in-out 2; }
 @keyframes flashRing {
