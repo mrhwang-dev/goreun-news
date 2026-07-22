@@ -56,7 +56,7 @@ def build_tailwind_css(site_dir: Path) -> None:
     )
     fallback = (
         '<script src="https://cdn.tailwindcss.com"></script>'
-        '<script>tailwind.config={darkMode:"media"}</script>'
+        '<script>tailwind.config={darkMode:"class"}</script>'
         f'<style type="text/tailwindcss">{custom}</style>'
     )
     for html_file in site_dir.rglob("*.html"):
@@ -232,13 +232,7 @@ def build_briefing(bias_model: dict | None = None) -> dict:
         "conservative_missing": _only("progressive", "conservative"),
     }
 
-    # 속보 → 해당 이슈 카드 매핑 (티커 클릭 시 카드로 스크롤)
-    link_to_idx = {
-        link: i for i, issue in enumerate(selected) for link in issue.get("_links", [])
-    }
     breaking = detect_breaking(items)
-    for entry in breaking:
-        entry["issue_index"] = link_to_idx.get(entry["link"])
 
     return {
         "generated_at": datetime.now(timezone.utc).isoformat(),

@@ -36,11 +36,14 @@ details[open] .tri { transform: rotate(180deg); }
 .ticker-item { opacity: 0; visibility: hidden; pointer-events: none; transition: opacity 0.5s, visibility 0.5s; }
 .ticker-item.show { opacity: 1; visibility: visible; pointer-events: auto; }
 
-/* 글자 크기 단계 (가/가+) — 기본은 1단계 */
-:root[data-fs="0"] .fs-t { font-size: 14px; }
-:root[data-fs="0"] .fs-p { font-size: 12.5px; }
-:root[data-fs="2"] .fs-t { font-size: 17px; }
-:root[data-fs="2"] .fs-p { font-size: 15.5px; }
+/* 글자 크기 단계 (작게/보통/크게) — 기본은 1단계 */
+:root[data-fs="0"] .fs-t { font-size: 13.5px !important; }
+:root[data-fs="0"] .fs-p { font-size: 12.5px !important; }
+:root[data-fs="0"] .headlines-body, :root[data-fs="0"] .policy-text { font-size: 11.5px !important; }
+
+:root[data-fs="2"] .fs-t { font-size: 17.5px !important; line-height: 1.4 !important; }
+:root[data-fs="2"] .fs-p { font-size: 15.5px !important; line-height: 1.6 !important; }
+:root[data-fs="2"] .headlines-body, :root[data-fs="2"] .policy-text { font-size: 14px !important; }
 
 #site-header { transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
 body, h1, h2, h3, h4, h5, h6, p, article {

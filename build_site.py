@@ -156,16 +156,9 @@ if (tickerLink && tickerDataEl) {
     tickerLink.querySelector("time").textContent = it.time;
     tickerLink.querySelector(".t-title").textContent = it.title;
     tickerLink.querySelector(".t-outlet").textContent = it.outlet;
-    if (it.idx !== null && it.idx !== undefined) {
-      tickerLink.href = "#issue-" + it.idx;
-      tickerLink.dataset.jump = "issue-" + it.idx;
-      tickerLink.removeAttribute("target");
-    } else {
-      tickerLink.href = it.link;
-      tickerLink.dataset.jump = "";
-      tickerLink.target = "_blank";
-      tickerLink.rel = "noopener nofollow";
-    }
+    tickerLink.href = it.link;
+    tickerLink.target = "_blank";
+    tickerLink.rel = "noopener nofollow";
   }
   if (!tickerReduced && tickerData.length > 1) {
     tickerLink.style.transition = "opacity 0.3s";
@@ -178,25 +171,6 @@ if (tickerLink && tickerDataEl) {
       }, 300);
     }, 5000);
   }
-  tickerLink.addEventListener("click", function (e) {
-    var jumpTarget = tickerLink.dataset.jump;
-    if (!jumpTarget) return;
-    e.preventDefault();
-    var card = document.getElementById(jumpTarget);
-    if (!card) return;
-    if (card.classList.contains("not-revealed")) {
-      card.classList.remove("not-revealed");
-    }
-    if (card.hidden) {
-      var allTab = document.querySelector('.tab[data-value="전체"]');
-      if (allTab) allTab.click();
-    }
-    card.scrollIntoView({ behavior: tickerReduced ? "auto" : "smooth", block: "center" });
-    card.classList.remove("flash-ring");
-    void card.offsetWidth;
-    card.classList.add("flash-ring");
-    setTimeout(function () { card.classList.remove("flash-ring"); }, 2100);
-  });
 }
 
 // ── 오프라인 페일세이프: 서비스워커 캐시 + 경고 배너 ──
@@ -677,7 +651,7 @@ document.querySelectorAll(".share-btn").forEach(function (btn) {
   });
 });
 
-// ── 글자 크기 조절 (가/가+, localStorage 유지) ──
+// ── 글자 크기 조절 (작게/보통/크게, localStorage 유지) ──
 var FS_KEY = "goreun_fs";
 var FS_NAMES = ["작게", "보통", "크게"];
 function applyFs(level) {
@@ -686,13 +660,33 @@ function applyFs(level) {
   localStorage.setItem(FS_KEY, String(level));
   var ind = document.getElementById("fs-indicator");
   if (ind) ind.textContent = FS_NAMES[level] || "보통";
+
+  var fsDown = document.getElementById("fs-down");
+  var fsReset = document.getElementById("fs-reset");
+  var fsUp = document.getElementById("fs-up");
+  if (fsDown) {
+    fsDown.classList.toggle("text-blue-600", level === 0);
+    fsDown.classList.toggle("dark:text-blue-400", level === 0);
+    fsDown.classList.toggle("font-bold", level === 0);
+  }
+  if (fsReset) {
+    fsReset.classList.toggle("text-blue-600", level === 1);
+    fsReset.classList.toggle("dark:text-blue-400", level === 1);
+  }
+  if (fsUp) {
+    fsUp.classList.toggle("text-blue-600", level === 2);
+    fsUp.classList.toggle("dark:text-blue-400", level === 2);
+    fsUp.classList.toggle("font-bold", level === 2);
+  }
   return level;
 }
 var fsLevel = applyFs(parseInt(localStorage.getItem(FS_KEY) || "1", 10));
 var fsDown = document.getElementById("fs-down");
+var fsReset = document.getElementById("fs-reset");
 var fsUp = document.getElementById("fs-up");
-if (fsDown) fsDown.addEventListener("click", function () { fsLevel = applyFs(fsLevel - 1); });
-if (fsUp) fsUp.addEventListener("click", function () { fsLevel = applyFs(fsLevel + 1); });
+if (fsDown) fsDown.addEventListener("click", function () { fsLevel = applyFs(0); });
+if (fsReset) fsReset.addEventListener("click", function () { fsLevel = applyFs(1); });
+if (fsUp) fsUp.addEventListener("click", function () { fsLevel = applyFs(2); });
 
 // ── 키보드 숏컷 & 모달 접근성 ──
 document.addEventListener("keydown", function(e) {
@@ -1363,6 +1357,8 @@ def _page(
   }} else {{
     document.documentElement.classList.remove("dark");
   }}
+  var fs = localStorage.getItem("goreun_fs") || "1";
+  document.documentElement.dataset.fs = fs;
 }})();
 </script>
 <!-- AdSense 승인 후 사이트 확인/광고 스크립트를 여기에 붙여넣으세요 -->
@@ -1395,10 +1391,10 @@ def _page(
           <span id="theme-icon">💻</span>
         </button>
 
-        <div class="flex items-center rounded-full border border-stone-300 dark:border-neutral-700 bg-white dark:bg-neutral-800 p-0.5 text-xs">
-          <button type="button" id="fs-down" title="글자 작게" class="px-2 py-0.5 rounded-full text-neutral-500 dark:text-neutral-400 hover:text-blue-600 dark:hover:text-blue-400">가</button>
-          <span id="fs-indicator" class="text-[10px] font-bold text-neutral-400 px-1 border-x border-stone-200 dark:border-neutral-700">보통</span>
-          <button type="button" id="fs-up" title="글자 크게" class="px-2 py-0.5 rounded-full text-neutral-500 dark:text-neutral-400 hover:text-blue-600 dark:hover:text-blue-400">가+</button>
+        <div class="flex items-center rounded-full border border-stone-300 dark:border-neutral-700 bg-white dark:bg-neutral-800 p-0.5 text-xs select-none">
+          <button type="button" id="fs-down" title="글자 작게 (0단계)" class="px-2 py-0.5 rounded-full text-neutral-500 dark:text-neutral-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">가-</button>
+          <button type="button" id="fs-reset" title="글자 보통 (1단계)" class="px-1.5 py-0.5 text-[10px] font-bold text-neutral-400 border-x border-stone-200 dark:border-neutral-700 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"><span id="fs-indicator">보통</span></button>
+          <button type="button" id="fs-up" title="글자 크게 (2단계)" class="px-2 py-0.5 rounded-full text-neutral-500 dark:text-neutral-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">가+</button>
         </div>
 
         <button type="button" id="bug-report" class="hidden sm:inline-flex rounded-full border border-stone-300 dark:border-neutral-700 bg-white dark:bg-neutral-800 px-3 py-1 text-xs text-neutral-500 dark:text-neutral-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">버그 제보</button>
@@ -1467,20 +1463,15 @@ def _render_ticker(breaking: list[dict]) -> str:
             "title": b["title"],
             "outlet": b["outlet"],
             "link": b["link"],
-            "idx": b.get("issue_index"),
         }
         for b in breaking
     ]
     payload = json.dumps(items, ensure_ascii=False).replace("</", "<\\/")
     first = items[0]
-    if first["idx"] is not None:
-        href, jump, target = f"#issue-{first['idx']}", f"issue-{first['idx']}", ""
-    else:
-        href, jump, target = _esc(first["link"]), "", ' target="_blank" rel="noopener nofollow"'
     return f"""<div class="border-b border-stone-200 dark:border-neutral-700 bg-white dark:bg-neutral-800">
   <div class="max-w-[1440px] mx-auto px-5 py-2 flex items-center gap-3">
     <span class="text-red-600 dark:text-red-400 font-bold text-xs tracking-[0.12em] shrink-0">속보</span>
-    <a id="ticker-link" class="flex items-center gap-2 min-w-0 flex-1 text-sm" href="{href}" data-jump="{jump}"{target}>
+    <a id="ticker-link" class="flex items-center gap-2 min-w-0 flex-1 text-sm" href="{_esc(first["link"])}" target="_blank" rel="noopener nofollow">
       <time class="text-red-600 dark:text-red-400 text-xs font-semibold tabular-nums shrink-0">{_esc(first["time"])}</time>
       <span class="t-title truncate">{_esc(first["title"])}</span>
       <span class="t-outlet text-xs text-neutral-400 shrink-0">{_esc(first["outlet"])}</span>
