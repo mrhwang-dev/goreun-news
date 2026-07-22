@@ -1259,7 +1259,7 @@ def _render_sidebar(policy: list[dict], blindspot: dict | None = None) -> str:
   <section class="rounded-xl border border-stone-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 p-5">
     <h2 class="text-sm font-bold mb-0.5">공개 API</h2>
     <p class="text-[11px] text-neutral-400 mb-2.5">이 페이지의 모든 데이터는 JSON으로도 제공됩니다 (매시간 갱신).</p>
-    <code class="block rounded-lg bg-stone-100 dark:bg-neutral-900 px-2.5 py-2 text-[11px] overflow-x-auto">GET /briefing.json<br>GET /community.json</code>
+    <code class="block rounded-lg bg-stone-100 dark:bg-neutral-900 px-2.5 py-2 text-[11px] overflow-x-auto">GET /briefing.json<br>GET /community.json<br>GET /bias-model.json</code>
   </section>
 </aside>"""
 

@@ -91,7 +91,8 @@ def detect_breaking(items: list[dict]) -> list[dict]:
     ]
 
 
-def build_briefing() -> dict:
+def build_briefing(bias_model: dict | None = None) -> dict:
+    from bias_model import effective_bias
     from cluster import allocate_slots, cluster_items
     from fetch_feeds import fetch_headlines
     from fetch_policy import fetch_policy_news
@@ -113,10 +114,10 @@ def build_briefing() -> dict:
         if not meta:
             continue
         outlets = {m["outlet"] for m in cluster}
-        # 미분류 매체는 '중도'로 뭉개지 않고 별도 집계 (정직한 스펙트럼)
+        # 앵커(통념) → 관측 모델 → 분류 없음 순으로 성향 결정 (bias_model.py)
         bias = {"progressive": 0, "moderate": 0, "conservative": 0, "unknown": 0}
         for outlet in outlets:
-            bias[config.OUTLET_BIAS.get(outlet) or "unknown"] += 1
+            bias[effective_bias(outlet, bias_model)] += 1
         issues_all.append(
             {
                 **meta,
@@ -131,7 +132,7 @@ def build_briefing() -> dict:
                         "title": m["title"],
                         "link": m["link"],
                         "time": m["ts"].astimezone(timezone(timedelta(hours=9))).strftime("%H:%M"),
-                        "bias": config.OUTLET_BIAS.get(m["outlet"]) or "unknown",
+                        "bias": effective_bias(m["outlet"], bias_model),
                     }
                     for m in sorted(cluster, key=lambda m: m["ts"])[
                         -config.MAX_HEADLINES_PER_ISSUE :
@@ -229,7 +230,20 @@ def main() -> None:
         print("예시 데이터로 사이트를 생성합니다 (API 호출 없음).")
     else:
         load_env_file()
-        briefing = build_briefing()
+        # 성향 관측 모델: 기존 아카이브 스냅샷으로 추정 (매시간 갱신·자가 보정)
+        from bias_model import compute_bias_model
+
+        prev_snaps: list[tuple[str, dict]] = []
+        for f in sorted((ROOT / "archive").glob("*.json"), reverse=True)[:ARCHIVE_KEEP]:
+            try:
+                prev_snaps.append((f.stem, json.loads(f.read_text(encoding="utf-8"))))
+            except json.JSONDecodeError:
+                continue
+        bias_model = compute_bias_model(prev_snaps)
+        classified = sum(1 for r in bias_model.values() if r.get("lean"))
+        print(f"성향 관측 모델: 표 축적 {len(bias_model)}개 매체, 분류 확정 {classified}개")
+
+        briefing = build_briefing(bias_model)
         from fetch_community import fetch_community
 
         try:
@@ -266,6 +280,21 @@ def main() -> None:
     (ROOT / "site" / "briefing.json").write_text(
         json.dumps(briefing, ensure_ascii=False, indent=2), encoding="utf-8"
     )
+    if not args.mock:
+        # 성향 모델 공개 (분류 근거 투명성)
+        (ROOT / "site" / "bias-model.json").write_text(
+            json.dumps(
+                {
+                    "generated_at": briefing.get("generated_at"),
+                    "method": "앵커(통념 분류) 제목과의 어휘 중첩 반복 관측 — bias_model.py",
+                    "anchors": config.OUTLET_BIAS,
+                    "model": bias_model,
+                },
+                ensure_ascii=False,
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
     (ROOT / "site" / "community.json").write_text(
         json.dumps(
             {"generated_at": briefing.get("generated_at"), "posts": community},
