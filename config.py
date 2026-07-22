@@ -1,4 +1,4 @@
-"""고른뉴스 (goreun.news) — 설정."""
+"""고른뉴스 (goreunnews.cloud) — 설정."""
 
 import os
 

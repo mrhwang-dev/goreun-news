@@ -16,7 +16,7 @@ import config
 
 import re
 
-UA = "Mozilla/5.0 (compatible; GoreunNews/1.0; +https://goreun.news)"
+UA = "Mozilla/5.0 (compatible; GoreunNews/1.0; +https://goreunnews.cloud)"
 
 
 def _fetch_xml(url: str) -> str:
@@ -41,21 +41,29 @@ def _fetch_xml(url: str) -> str:
         return re.sub(r'encoding=["\'][^"\']+["\']', 'encoding="utf-8"', text, count=1, flags=re.I)
 
 
+KST = timezone(timedelta(hours=9))
+
+
 def _parse_ts(text: str | None) -> datetime | None:
+    """pubDate 파싱. 타임존이 없는 시각은 KST로 가정한다.
+
+    ndsoft 계열 국내 피드는 '2026-07-22 19:40:32'처럼 tz 없는 KST를 주는데,
+    이를 UTC로 가정하면 표시 시각이 9시간 미래로 밀린다.
+    """
     if not text:
         return None
     cleaned = text.strip()
     try:
         dt = parsedate_to_datetime(cleaned)
         if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
+            dt = dt.replace(tzinfo=KST)
         return dt
     except (ValueError, TypeError):
         pass
     try:
         dt = datetime.fromisoformat(cleaned.replace("Z", "+00:00"))
         if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
+            dt = dt.replace(tzinfo=KST)
         return dt
     except (ValueError, TypeError):
         return None

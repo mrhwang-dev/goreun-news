@@ -628,7 +628,7 @@ function buildShareCard(card) {
   bt1.textContent = "고른뉴스";
   var bt2 = document.createElement("div");
   bt2.setAttribute("style", "font-size:22px;color:#8a8a90;");
-  bt2.textContent = "고른뉴스.메인.한국 · AI 중립 뉴스 브리핑";
+  bt2.textContent = "goreunnews.cloud · AI 중립 뉴스 브리핑";
   brandText.appendChild(bt1); brandText.appendChild(bt2);
   brand.appendChild(mark); brand.appendChild(brandText);
   bottom.appendChild(brand);

@@ -14,7 +14,7 @@ import urllib.request
 
 import config
 
-UA = "Mozilla/5.0 (compatible; GoreunNews/1.0; +https://goreun.news)"
+UA = "Mozilla/5.0 (compatible; GoreunNews/1.0; +https://goreunnews.cloud)"
 
 
 def _get(url: str) -> str:

@@ -1,10 +1,10 @@
-# 고른뉴스 (goreun.news)
+# 고른뉴스 (goreunnews.cloud)
 
 **골라 담아, 고르게 전합니다.**
 여러 언론사의 헤드라인을 교차 확인해 매시간 정리하는 무료 중립 뉴스 브리핑 사이트.
 
 - 브랜드: **고른뉴스** — "고르다"의 이중 의미(골라 담다 + 치우침 없이 고르게)
-- 도메인 1순위: `goreun.news` (예비: `goreunnews.com`, `goreun.kr`) — 2026-07-22 DNS 기준 미등록, 등록은 별도 진행 필요
+- 도메인: **https://goreunnews.cloud** (가비아 정식 등록, 2026-07-22)
 
 ## 구조
 
@@ -135,9 +135,9 @@ python run.py
 
 ## 배포 도메인
 
-- 현재: `goreunnews.kro.kr` (내도메인.한국 무료 도메인, CNAME → mrhwang-dev.github.io)
-- 이전: `고른뉴스.메인.한국` — 한글 IDN의 인증서 발급 지연·퓨니코드 URL 문제로 로마자 도메인으로 전환 (웹포워딩 권장)
-- 1순위 후보: `goreun.news` (구매 시 Pages 커스텀 도메인만 교체)
+- 현재: **`goreunnews.cloud`** (가비아 정식 도메인, HTTPS 강제) — A 레코드 → GitHub Pages
+- 이전: `고른뉴스.메인.한국` → `goreunnews.kro.kr` (무료 도메인 시기 — GitHub 인증서 발급 불가 문제로 정식 도메인 구매)
+
 
 ## 버그 제보 (Sentry)
 
