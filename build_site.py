@@ -1261,7 +1261,6 @@ def _page(
             ("blindspot", "블라인드스팟", "blindspot.html"),
             ("frame", "프레임 체크", "frame.html"),
             ("community", "커뮤니티", "community.html"),
-            ("search", "검색", "search.html"),
             ("scrapbook", "스크랩북", "scrapbook.html"),
         )
     )
