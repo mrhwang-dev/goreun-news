@@ -439,10 +439,80 @@ function paintStar(btn, on) {
   btn.classList.toggle("text-amber-500", on);
   btn.setAttribute("aria-pressed", on ? "true" : "false");
 }
+// ── 로그인 (닉네임만, 기기 저장 — 개인정보 최소화) ──
+var AUTH_KEY = "goreun_user";
+function authUser() {
+  try { return JSON.parse(localStorage.getItem(AUTH_KEY)); } catch (e) { return null; }
+}
+var loginCallback = null;
+function openLogin(cb) {
+  loginCallback = cb || null;
+  var m = document.getElementById("login-modal");
+  if (m) { m.hidden = false; var i = document.getElementById("login-name"); if (i) i.focus(); }
+}
+function closeLogin() {
+  var m = document.getElementById("login-modal");
+  if (m) m.hidden = true;
+}
+function renderAuth() {
+  var area = document.getElementById("auth-area");
+  if (!area) return;
+  area.textContent = "";
+  var user = authUser();
+  if (user) {
+    var name = document.createElement("span");
+    name.className = "text-xs text-neutral-500 dark:text-neutral-400 px-1";
+    name.textContent = user.name + " 님";
+    var out = document.createElement("button");
+    out.type = "button";
+    out.className = "rounded-full border border-stone-300 dark:border-neutral-600 bg-white dark:bg-neutral-800 px-3 py-1 text-xs text-neutral-500 dark:text-neutral-400 hover:text-blue-600 hover:border-blue-500";
+    out.textContent = "로그아웃";
+    out.addEventListener("click", function () {
+      localStorage.removeItem(AUTH_KEY);
+      renderAuth();
+      if (typeof renderScrapGate === "function") renderScrapGate();
+      toast("로그아웃했습니다");
+    });
+    area.appendChild(name); area.appendChild(out);
+  } else {
+    var btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "rounded-full border border-stone-300 dark:border-neutral-600 bg-white dark:bg-neutral-800 px-3 py-1 text-xs text-neutral-500 dark:text-neutral-400 hover:text-blue-600 hover:border-blue-500";
+    btn.textContent = "로그인";
+    btn.addEventListener("click", function () { openLogin(); });
+    area.appendChild(btn);
+  }
+}
+var loginForm = document.getElementById("login-form");
+if (loginForm) {
+  loginForm.addEventListener("submit", function (e) {
+    e.preventDefault();
+    var name = document.getElementById("login-name").value.trim();
+    if (!name) return;
+    localStorage.setItem(AUTH_KEY, JSON.stringify({ name: name }));
+    closeLogin();
+    renderAuth();
+    if (typeof renderScrapGate === "function") renderScrapGate();
+    toast(name + " 님, 환영합니다");
+    if (loginCallback) { var cb = loginCallback; loginCallback = null; cb(); }
+  });
+  document.getElementById("login-close").addEventListener("click", closeLogin);
+}
+renderAuth();
+
+// ── 스크랩: 로그인해야 사용 가능 ──
 document.querySelectorAll(".scrap-btn").forEach(function (btn) {
   paintStar(btn, isScrapped(JSON.parse(btn.dataset.scrap).id));
   btn.addEventListener("click", function (e) {
     e.preventDefault();
+    if (!authUser()) {
+      openLogin(function () {
+        var on = toggleScrap(JSON.parse(btn.dataset.scrap));
+        paintStar(btn, on);
+      });
+      toast("스크랩은 로그인 후 이용할 수 있습니다");
+      return;
+    }
     var on = toggleScrap(JSON.parse(btn.dataset.scrap));
     paintStar(btn, on);
     toast(on ? "스크랩북에 저장했습니다 ★" : "스크랩을 해제했습니다");
@@ -794,7 +864,22 @@ SCRAPBOOK_SCRIPT = """
     return node;
   }
 
+  function renderScrapGate() {
+    var gate = document.getElementById("scrap-login-gate");
+    var logged = !!authUser();
+    if (gate) gate.hidden = logged;
+    ["bias-dash", "scrap-empty", "scrap-news-sec", "scrap-posts-sec"].forEach(function (id) {
+      var el = document.getElementById(id);
+      if (el && !logged) el.hidden = true;
+    });
+    if (logged) render();
+  }
+  window.renderScrapGate = renderScrapGate;
+  var gateBtn = document.getElementById("scrap-gate-login");
+  if (gateBtn) gateBtn.addEventListener("click", function () { openLogin(renderScrapGate); });
+
   function render() {
+    if (!authUser()) return;
     var scraps = loadScraps().sort(function (a, b) {
       return (b.saved_at || "").localeCompare(a.saved_at || "");
     });
@@ -849,7 +934,7 @@ SCRAPBOOK_SCRIPT = """
     });
   }
 
-  render();
+  renderScrapGate();
 })();
 """
 
@@ -1025,7 +1110,8 @@ def _page(
         </span>
         <span id="updated-label" class="tabular-nums">{_esc(updated_label)}</span>
       </span>
-      <span class="flex gap-1">
+      <span class="flex gap-1 items-center">
+        <span id="auth-area" class="flex items-center gap-1"></span>
         <button type="button" id="fs-down" title="글자 작게" class="rounded-full border border-stone-300 dark:border-neutral-600 bg-white dark:bg-neutral-800 px-2.5 py-1 text-xs text-neutral-500 dark:text-neutral-400 hover:text-blue-600 hover:border-blue-500">가</button>
         <button type="button" id="fs-up" title="글자 크게" class="rounded-full border border-stone-300 dark:border-neutral-600 bg-white dark:bg-neutral-800 px-2.5 py-1 text-sm text-neutral-500 dark:text-neutral-400 hover:text-blue-600 hover:border-blue-500">가+</button>
         <button type="button" id="bug-report" class="rounded-full border border-stone-300 dark:border-neutral-600 bg-white dark:bg-neutral-800 px-3 py-1 text-xs text-neutral-500 dark:text-neutral-400 hover:text-blue-600 hover:border-blue-500 dark:hover:text-blue-400">버그 제보</button>
@@ -1042,6 +1128,17 @@ def _page(
     <p class="flex flex-wrap gap-x-3 gap-y-1"><span>{site_stamp}</span><span id="visit-count" class="tabular-nums"></span></p>
   </div>
 </footer>
+<div id="login-modal" hidden class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+  <div class="w-80 rounded-xl border border-stone-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 p-5 shadow-xl">
+    <h3 class="font-bold mb-1">로그인</h3>
+    <p class="text-xs text-neutral-400 mb-3">닉네임만 입력하면 됩니다. 정보는 이 기기(브라우저)에만 저장되며 서버로 전송되지 않습니다.</p>
+    <form id="login-form" class="flex gap-2">
+      <input id="login-name" type="text" required maxlength="16" placeholder="닉네임" class="min-w-0 flex-1 rounded-lg border border-stone-300 dark:border-neutral-600 bg-stone-50 dark:bg-neutral-900 px-3 py-1.5 text-sm placeholder:text-neutral-400 focus:outline-none focus:border-blue-500">
+      <button type="submit" class="shrink-0 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-3.5 py-1.5">시작</button>
+    </form>
+    <button type="button" id="login-close" class="mt-2.5 text-xs text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200">닫기</button>
+  </div>
+</div>
 <button type="button" id="to-top" hidden aria-label="맨 위로" class="fixed bottom-6 right-5 z-40 w-11 h-11 rounded-full bg-neutral-900 text-stone-50 dark:bg-neutral-100 dark:text-neutral-900 shadow-lg text-lg">↑</button>
 {banner_html}
 <script>{BASE_SCRIPT}</script>
@@ -1168,7 +1265,14 @@ def _render_issue(issue: dict, index: int) -> str:
         for h in heads
     )
     bias_attr = _esc(json.dumps(issue.get("bias") or {}, ensure_ascii=False))
-    return f"""<article id="{anchor}" class="rounded-xl border border-stone-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 p-5 border-t-[3px]" style="border-top-color:{color}" data-cat="{_esc(issue["category"])}" data-bias="{bias_attr}">
+    if outlet_count >= 7:
+        tier_cls, span_cls = "card-lg ", " sm:col-span-2"
+    elif outlet_count >= 4:
+        tier_cls, span_cls = "", ""
+    else:
+        tier_cls, span_cls = "card-sm ", ""
+    minor_attr = ' data-minor="1" hidden' if outlet_count <= 3 else ""  # 전체 탭에선 숨김
+    return f"""<article id="{anchor}" class="{tier_cls}rounded-xl border border-stone-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 p-5 border-t-[3px]{span_cls}" style="border-top-color:{color}" data-cat="{_esc(issue["category"])}" data-oc="{outlet_count}" data-bias="{bias_attr}"{minor_attr}>
   <div class="flex items-center justify-between text-xs">
     <span class="flex items-center gap-2 flex-wrap">
       <span class="font-semibold rounded-full px-2.5 py-0.5" style="color:{color};background:{color}1f">{_esc(issue["category"])}</span>
@@ -1305,6 +1409,7 @@ def _render_sidebar(policy: list[dict], blindspot: dict | None = None) -> str:
 def build(
     briefing: dict, community: list[dict], out_dir: Path,
     archive_stamps: list[str] | None = None,
+    snapshots: list[tuple[str, dict]] | None = None,
 ) -> Path:
     now = datetime.now(ZoneInfo("Asia/Seoul"))
     generated_at = briefing.get("generated_at", now.isoformat())
@@ -1327,7 +1432,8 @@ def build(
         counts[issue["category"]] = counts.get(issue["category"], 0) + 1
     hottest = max(heat, key=heat.get) if heat else None
 
-    tabs = [_tab("전체", len(issues), "cat", "전체", True)]
+    major_count = sum(1 for i in issues if i.get("outlet_count", 0) > 3)
+    tabs = [_tab("전체", major_count, "cat", "전체", True)]
     for cat in config.ISSUE_CATEGORIES:
         if cat not in counts:
             continue
@@ -1348,6 +1454,10 @@ def build(
         if i == 3:  # 4번째와 5번째 카드 사이 광고
             cards.append(f'<div class="col-span-full">{ad_slot("feed-1")}</div>')
     cards.append('<div id="feed-sentinel" class="col-span-full h-1" aria-hidden="true"></div>')
+    # 뉴스는 오늘만 표시 — 이전일은 하단 날짜 스트립으로 해당일 스냅샷 이동
+    today = now.strftime("%Y-%m-%d")
+    dates = _dates_of(snapshots or [])
+    cards.append(f'<div class="col-span-full">{_date_strip(dates, today, "archive")}</div>')
 
     main_html = f"""<div class="grid grid-cols-1 lg:grid-cols-[7fr_3fr] gap-7 py-6">
   <section class="grid sm:grid-cols-2 xl:grid-cols-3 gap-4 content-start" aria-label="주요 이슈">{"".join(cards)}</section>
@@ -1418,37 +1528,80 @@ def build(
 
     build_community_page(community, out_dir, generated_at, now, updated, stamp)
     build_scrapbook_page(out_dir, generated_at, now, updated, stamp)
-    build_blindspot_page(briefing, out_dir, generated_at, updated, stamp)
-    build_frame_page(briefing, out_dir, generated_at, updated, stamp)
+    build_blindspot_page(briefing, out_dir, generated_at, updated, stamp, snapshots or [], now)
+    build_frame_page(briefing, out_dir, generated_at, updated, stamp, snapshots or [], now)
     build_seo_files(briefing, out_dir, punycode_domain, now, archive_stamps or [])
     return out_dir / "index.html"
+
+
+# ── 날짜 유틸: 스트립(사진 참조 스타일)·날짜별 스냅샷 ───────────────────
+
+_WEEKDAYS = "월화수목금토일"
+
+
+def _date_label(date_str: str) -> str:
+    from datetime import datetime as _dt
+
+    d = _dt.strptime(date_str, "%Y-%m-%d")
+    return f"{d.month:02d}월 {d.day:02d}일({_WEEKDAYS[d.weekday()]})"
+
+
+def _dates_of(snapshots: list[tuple[str, dict]]) -> list[tuple[str, str]]:
+    """스냅샷들에서 (날짜, 그 날짜의 최신 스탬프) 목록을 최신순으로 만든다."""
+    seen: dict[str, str] = {}
+    for stamp, _ in snapshots:  # snapshots는 최신순
+        date = stamp[:10]
+        if date not in seen:
+            seen[date] = stamp
+    return list(seen.items())
+
+
+def _date_strip(
+    dates: list[tuple[str, str]], active_date: str, mode: str, asset_prefix: str = ""
+) -> str:
+    """섹션 하단 날짜 선택 스트립. mode: 'archive'(스냅샷 링크) | 'anchor'(#d-날짜)."""
+    if not dates:
+        return ""
+    parts = []
+    for date, stamp in dates[:7]:
+        label = _esc(_date_label(date))
+        if date == active_date:
+            parts.append(f'<span class="font-bold text-blue-600 dark:text-blue-400">{label}</span>')
+        elif mode == "anchor":
+            parts.append(f'<a class="hover:text-blue-600 dark:hover:text-blue-400" href="#d-{date}">{label}</a>')
+        else:
+            parts.append(f'<a class="hover:text-blue-600 dark:hover:text-blue-400" href="{asset_prefix}archive/{_esc(stamp)}/">{label}</a>')
+    return (
+        '<div class="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-sm text-neutral-500 dark:text-neutral-400 py-5">'
+        + '<span class="text-neutral-300 dark:text-neutral-600 select-none"> · </span>'.join(parts)
+        + "</div>"
+    )
 
 
 # ── 블라인드스팟 탭: 좌우 대비 전체 뷰 ──────────────────────────────────
 
 
 def build_blindspot_page(
-    briefing: dict, out_dir: Path, generated_at: str, updated: str, stamp: str
+    briefing: dict, out_dir: Path, generated_at: str, updated: str, stamp: str,
+    snapshots: list[tuple[str, dict]], now: datetime,
 ) -> None:
-    blindspot = briefing.get("blindspot") or {}
+    """블라인드스팟 — 날짜별 누적 뷰. 시간이 지나도 사라지지 않고 모인다."""
 
-    def _column(key: str, title: str, color: str) -> str:
-        items = blindspot.get(key) or []
+    def _column(items: list[dict], title: str, color: str) -> str:
         if not items:
-            cards = '<p class="text-sm text-neutral-400 py-8 text-center">현재 해당 이슈가 없습니다</p>'
-        else:
-            card_list = []
-            for it in items:
-                heads = "".join(
-                    f"<li>{_headline_anchor(h, _esc(h['title']))}</li>"
-                    for h in it.get("headlines", [])
-                )
-                anchor = (
-                    f'index.html#issue-{it["issue_index"]}'
-                    if it.get("issue_index") is not None
-                    else _esc(it.get("link", "#"))
-                )
-                card_list.append(f"""<article class="rounded-xl border border-stone-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 p-5 border-t-[3px]" style="border-top-color:{color}">
+            return '<p class="text-sm text-neutral-400 py-6 text-center">해당 이슈 없음</p>'
+        card_list = []
+        for it in items:
+            heads = "".join(
+                f"<li>{_headline_anchor(h, _esc(h['title']))}</li>"
+                for h in it.get("headlines", [])
+            )
+            anchor = (
+                f'index.html#issue-{it["issue_index"]}'
+                if it.get("issue_index") is not None
+                else _esc(it.get("link", "#"))
+            )
+            card_list.append(f"""<article class="rounded-xl border border-stone-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 p-5 border-t-[3px]" style="border-top-color:{color}">
   <div class="flex items-center justify-between text-xs mb-1.5">
     <span class="font-semibold" style="color:{color}">{title}</span>
     <span class="text-neutral-400">{it["outlet_count"]}개 매체</span>
@@ -1458,21 +1611,52 @@ def build_blindspot_page(
   {_render_bias_bar(it.get("bias"))}
   <ul class="flex flex-col gap-1.5 border-t border-stone-200 dark:border-neutral-700 pt-2.5">{heads}</ul>
 </article>""")
-            cards = "".join(card_list)
-        return f'<div class="flex flex-col gap-4">{cards}</div>'
+        return f'<div class="flex flex-col gap-4">{"".join(card_list)}</div>'
 
-    main_html = f"""<div class="py-6">
-  <p class="text-xs text-neutral-400 mb-5 max-w-[80ch]">블라인드스팟은 한쪽 성향 매체만 보도한 이슈입니다. 성향 분류는 참고용 일반 분류이며, 미분류 매체는 집계에서 '분류 없음'으로 처리됩니다.</p>
+    # 날짜별 블라인드스팟 수집: 오늘=현재 브리핑, 이전일=그 날짜 최신 스냅샷.
+    # 같은 이슈(라벨)는 처음 등장한(최신) 날짜에만 남긴다.
+    today = now.strftime("%Y-%m-%d")
+    dates = _dates_of(snapshots)
+    per_date: list[tuple[str, dict]] = []
+    seen_labels: set[str] = set()
+    snap_map = dict(snapshots)
+    for date, latest_stamp in (dates or [(today, "")]):
+        source = briefing if date == today else snap_map.get(latest_stamp, {})
+        bs = source.get("blindspot") or {}
+        day = {}
+        for key in ("progressive_missing", "conservative_missing"):
+            fresh = [it for it in (bs.get(key) or []) if it["label"] not in seen_labels]
+            for it in fresh:
+                seen_labels.add(it["label"])
+            # 과거 날짜 항목의 index 앵커는 현재 index와 무관하므로 원문 링크로
+            if date != today:
+                fresh = [{**it, "issue_index": None} for it in fresh]
+            day[key] = fresh
+        if day.get("progressive_missing") or day.get("conservative_missing"):
+            per_date.append((date, day))
+    if not per_date:
+        per_date = [(today, briefing.get("blindspot") or {})]
+
+    sections = []
+    for date, day in per_date:
+        sections.append(f"""<section id="d-{date}">
+  <h2 class="text-base font-bold mb-3 tabular-nums">{_esc(_date_label(date))}</h2>
   <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-    <section aria-label="진보 매체만 보도">
-      <h2 class="text-sm font-bold mb-3 text-blue-600 dark:text-blue-400">🔵 진보 매체만 보도한 이슈</h2>
-      {_column("conservative_missing", "진보 매체만 보도", FRAME_COLORS["progressive"])}
-    </section>
-    <section aria-label="보수 매체만 보도">
-      <h2 class="text-sm font-bold mb-3 text-red-600 dark:text-red-400">🔴 보수 매체만 보도한 이슈</h2>
-      {_column("progressive_missing", "보수 매체만 보도", FRAME_COLORS["conservative"])}
-    </section>
+    <div>
+      <h3 class="text-sm font-bold mb-3" style="color:{FRAME_COLORS['progressive']}">🔵 진보 매체만 보도한 이슈</h3>
+      {_column(day.get("conservative_missing") or [], "진보 매체만 보도", FRAME_COLORS["progressive"])}
+    </div>
+    <div>
+      <h3 class="text-sm font-bold mb-3" style="color:{FRAME_COLORS['conservative']}">🔴 보수 매체만 보도한 이슈</h3>
+      {_column(day.get("progressive_missing") or [], "보수 매체만 보도", FRAME_COLORS["conservative"])}
+    </div>
   </div>
+</section>""")
+
+    main_html = f"""<div class="py-6 flex flex-col gap-8">
+  <p class="text-xs text-neutral-400 max-w-[80ch]">블라인드스팟은 한쪽 성향 매체만 보도한 이슈입니다. 지난 항목도 날짜별로 계속 쌓입니다. 성향 분류는 참고용 일반 분류입니다.</p>
+  {"".join(sections)}
+  {_date_strip(dates, "", "anchor")}
 </div>"""
 
     page = _page(
@@ -1495,43 +1679,88 @@ def build_blindspot_page(
 
 
 def build_frame_page(
-    briefing: dict, out_dir: Path, generated_at: str, updated: str, stamp: str
+    briefing: dict, out_dir: Path, generated_at: str, updated: str, stamp: str,
+    snapshots: list[tuple[str, dict]], now: datetime,
 ) -> None:
-    framed = [
-        (i, issue) for i, issue in enumerate(briefing.get("issues", [])) if issue.get("framing")
-    ]
+    """프레임 체크 — 날짜별 갤러리 + 각 헤드라인의 최초 보도 일시 표기."""
+    # 최초 보도 일시: 아카이브 전체에서 링크가 처음 목격된 (날짜, 송고시각)
+    first_seen: dict[str, tuple[str, str]] = {}
+    for snap_stamp, brief in sorted(snapshots, key=lambda s: s[0]):
+        date = snap_stamp[:10]
+        for issue in brief.get("issues", []):
+            for h in issue.get("headlines", []):
+                link = h.get("link")
+                if link and link not in first_seen:
+                    first_seen[link] = (date, h.get("time", ""))
+    today = now.strftime("%Y-%m-%d")
+    for issue in briefing.get("issues", []):
+        for h in issue.get("headlines", []):
+            link = h.get("link")
+            if link and link not in first_seen:
+                first_seen[link] = (today, h.get("time", ""))
 
-    cards = []
-    for i, issue in framed:
-        framing = issue["framing"]
-        words = framing.get("words") or []
-        chips = _frame_chips(words)
-        heads = "".join(
-            f"<li>{_headline_anchor(h, _highlight_title(h['title'], words))}</li>"
-            for h in issue.get("headlines", [])[:8]
-        )
-        color = CATEGORY_COLORS.get(issue["category"], "#2563eb")
-        cards.append(f"""<article class="rounded-xl border border-stone-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 p-5 border-t-[3px]" style="border-top-color:{color}">
+    def _first_seen_label(h: dict) -> str:
+        date, tm = first_seen.get(h.get("link", ""), (today, h.get("time", "")))
+        return f"{date[5:7]}.{date[8:10]} {tm}".strip()
+
+    def _framed_cards(issues: list[dict], link_to_index: bool) -> list[str]:
+        cards = []
+        for i, issue in issues:
+            framing = issue.get("framing") or {}
+            if not framing.get("note"):
+                continue
+            words = framing.get("words") or []
+            chips = _frame_chips(words)
+            heads = "".join(
+                f'<li class="flex items-start gap-2">'
+                f'<time class="w-[5.5rem] shrink-0 pt-px text-[10px] text-neutral-400 tabular-nums" title="최초 보도 일시">{_esc(_first_seen_label(h))}</time>'
+                f'<div class="min-w-0 flex-1">{_headline_anchor(h, _highlight_title(h["title"], words))}</div></li>'
+                for h in issue.get("headlines", [])[:8]
+            )
+            color = CATEGORY_COLORS.get(issue["category"], "#2563eb")
+            title_html = (
+                f'<a class="hover:text-blue-600 dark:hover:text-blue-400" href="index.html#issue-{i}">{_esc(issue["label"])}</a>'
+                if link_to_index
+                else _esc(issue["label"])
+            )
+            cards.append(f"""<article class="rounded-xl border border-stone-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 p-5 border-t-[3px]" style="border-top-color:{color}">
   <div class="flex items-center justify-between text-xs mb-1.5">
     <span class="font-semibold rounded-full px-2.5 py-0.5" style="color:{color};background:{color}1f">{_esc(issue["category"])}</span>
     <span class="text-neutral-400">{issue.get("outlet_count", 0)}개 매체</span>
   </div>
-  <h3 class="font-bold text-[15px] leading-snug mb-2"><a class="hover:text-blue-600 dark:hover:text-blue-400" href="index.html#issue-{i}">{_esc(issue["label"])}</a></h3>
+  <h3 class="font-bold text-[15px] leading-snug mb-2">{title_html}</h3>
   <div class="rounded-lg border border-stone-200 dark:border-neutral-700 bg-stone-50 dark:bg-neutral-900/60 p-3 mb-3">
     <p class="text-xs text-neutral-600 dark:text-neutral-300">{_esc(framing["note"])}</p>
     {f'<p class="mt-1.5 text-xs text-neutral-500 dark:text-neutral-400">프레임 단어: {chips}</p>' if chips else ""}
   </div>
   <ul class="flex flex-col gap-1.5">{heads}</ul>
 </article>""")
+        return cards
 
-    body = (
-        f'<div class="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4 content-start">{"".join(cards)}</div>'
-        if cards
-        else '<p class="text-sm text-neutral-400 py-16 text-center">이번 시간 브리핑에는 프레임 분석 대상 이슈가 없습니다.</p>'
-    )
-    main_html = f"""<div class="py-6">
-  <p class="text-xs text-neutral-400 mb-5 max-w-[80ch]">🔍 프레임 체크 — 같은 사건을 다룬 매체들이 제목에서 어떤 단어를 골랐는지 해부합니다. 알고리즘이 공통어·진영 전용어 후보를 산출하고 AI가 검증·서술한 참고용 분석입니다.</p>
+    dates = _dates_of(snapshots)
+    snap_map = dict(snapshots)
+    sections = []
+    seen_labels: set[str] = set()
+    for date, latest_stamp in (dates or [(today, "")]):
+        source = briefing if date == today else snap_map.get(latest_stamp, {})
+        pool = []
+        for i, issue in enumerate(source.get("issues", [])):
+            if issue.get("framing", {}).get("note") and issue["label"] not in seen_labels:
+                seen_labels.add(issue["label"])
+                pool.append((i, issue))
+        cards = _framed_cards(pool, link_to_index=(date == today))
+        if not cards:
+            continue
+        sections.append(f"""<section id="d-{date}">
+  <h2 class="text-base font-bold mb-3 tabular-nums">{_esc(_date_label(date))}</h2>
+  <div class="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4 content-start">{"".join(cards)}</div>
+</section>""")
+
+    body = "".join(sections) or '<p class="text-sm text-neutral-400 py-16 text-center">프레임 분석 대상 이슈가 아직 없습니다.</p>'
+    main_html = f"""<div class="py-6 flex flex-col gap-8">
+  <p class="text-xs text-neutral-400 max-w-[80ch]">🔍 프레임 체크 — 같은 사건을 다룬 매체들이 제목에서 어떤 단어를 골랐는지 해부합니다. 각 헤드라인 앞의 일시는 아카이브에서 처음 목격된 최초 보도 시점입니다. 참고용 AI 분석.</p>
   {body}
+  {_date_strip(dates, "", "anchor")}
 </div>"""
 
     page = _page(
@@ -1570,7 +1799,7 @@ SEARCH_SCRIPT = """
   function render() {
     var q = (input.value || "").trim().toLowerCase();
     var d = dateSel.value;
-    var toks = q ? q.split(/\\s+/) : [];
+    var toks = q ? q.split(/\s+/) : [];
     var res = items.filter(function (it) {
       if (d && it.d !== d) return false;
       if (!toks.length) return true;
@@ -1626,11 +1855,10 @@ def build_search_assets(
 ) -> None:
     """아카이브 전체 이슈를 검색 인덱스로 통합하고 검색 페이지를 렌더링한다.
 
-    같은 라벨의 이슈는 최신 스냅샷 항목이 남는다(오래된 → 최신 순으로 덮어씀).
-    결과 링크는 해당 시각 아카이브 스냅샷의 카드 앵커로 연결된다.
+    키 = (라벨, 날짜): 같은 라벨이라도 날짜가 다르면 별도 항목으로 유지해
+    날짜 필터 검색에서 과거 사건이 소실되지 않는다. 같은 날짜 안에서만
+    최신 스냅샷이 덮어쓴다.
     """
-    # 키 = (라벨, 날짜): 같은 라벨이라도 날짜가 다르면 별도 항목으로 유지해
-    # 날짜 필터 검색에서 과거 사건이 소실되지 않는다. 같은 날짜 안에서만 최신이 덮어쓴다.
     entries: dict[tuple[str, str], dict] = {}
     for stamp, brief in sorted(snapshots, key=lambda s: s[0]):
         date = stamp[:10]
@@ -1849,8 +2077,14 @@ SOURCE_BADGE = {
 }
 
 _TREND_STOPWORDS = {
-    "오늘", "진짜", "근데", "이거", "그냥", "사람", "요즘", "하는", "보는", "있는",
-    "없는", "이제", "다시", "때문", "정도", "레전드", "후기", "단독", "속보",
+    # 기능어·시간·정도
+    "오늘", "어제", "내일", "요즘", "이번", "지난", "최근", "현재", "결국", "그냥",
+    "진짜", "정도", "때문", "가장", "제일", "모든", "이제", "다시", "하는", "있는",
+    "없는", "있고", "있다", "된다", "한다", "논란", "이유", "상황", "결과", "수준",
+    # 커뮤니티 상투어
+    "근황", "주년", "레전드", "후기", "단독", "속보", "충격", "화제", "반응", "정리",
+    "모음", "공개", "등장", "사람", "사람들", "대박", "실화", "여자", "남자", "국내",
+    "관련", "발표", "기념", "네티즌", "누리꾼",
 }
 
 COMMUNITY_SIDEBAR_SCRIPT = """
@@ -1892,16 +2126,40 @@ def _metric_line(p: dict) -> str:
 
 
 def _trend_keywords(posts: list[dict], top_n: int = 8) -> list[str]:
-    """게시글 제목에서 빈출 키워드를 추출한다 (간단 토큰 빈도)."""
-    import re as _re
-    from collections import Counter
+    """트렌드 키워드 산출 알고리즘.
 
-    counter: Counter[str] = Counter()
+    1) 토큰화 + 어근 정규화(cluster.stem_token) — '있고'→'있', 조사 제거
+    2) 불용어 사전 — 기능어·감탄사·커뮤니티 상투어('이유','근황','주년' 등) 배제,
+       한 글자 어근·숫자 배제
+    3) 교차 소스 검증 — 서로 다른 커뮤니티 2곳 이상에서 등장하면 가중(+2/소스)
+    4) 점수 = 빈도 + 교차 소스 보너스, 빈도 2 미만은 탈락
+    """
+    import re as _re
+    from collections import Counter, defaultdict
+
+    from cluster import stem_token
+
+    stop = _TREND_STOPWORDS
+    freq: Counter[str] = Counter()
+    sources: defaultdict[str, set] = defaultdict(set)
     for post in posts:
-        for token in _re.findall(r"[가-힣]{2,}", post["title"]):
-            if token not in _TREND_STOPWORDS and token not in SOURCE_BADGE:
-                counter[token] += 1
-    return [w for w, n in counter.most_common(top_n) if n >= 2]
+        seen_in_title: set[str] = set()
+        for raw in _re.findall(r"[가-힣]{2,}", post["title"]):
+            token = stem_token(raw)
+            if len(token) < 2 or token in stop or token in SOURCE_BADGE:
+                continue
+            if token in seen_in_title:
+                continue
+            seen_in_title.add(token)
+            freq[token] += 1
+            sources[token].add(post.get("source", ""))
+    scored = [
+        (freq[tk] + 2 * (len(sources[tk]) - 1), tk)
+        for tk in freq
+        if freq[tk] >= 2
+    ]
+    scored.sort(key=lambda x: (-x[0], x[1]))
+    return [tk for _, tk in scored[:top_n]]
 
 
 def build_community_page(
@@ -2068,6 +2326,10 @@ def build_scrapbook_page(
     out_dir: Path, generated_at: str, now: datetime, updated: str, stamp: str
 ) -> Path:
     main_html = """<div class="max-w-3xl mx-auto py-6 flex flex-col gap-6">
+  <div id="scrap-login-gate" hidden class="text-center py-16">
+    <p class="text-sm text-neutral-500 dark:text-neutral-400 mb-4">스크랩북은 로그인 후 이용할 수 있습니다.<br><span class="text-xs text-neutral-400">닉네임만 입력하면 되고, 정보는 이 기기에만 저장됩니다.</span></p>
+    <button type="button" id="scrap-gate-login" class="rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-5 py-2">로그인</button>
+  </div>
   <section id="bias-dash" hidden class="rounded-xl border border-stone-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 p-5">
     <h2 class="text-sm font-bold mb-1">내가 주로 읽는 뉴스의 성향 비율</h2>
     <p class="text-[11px] text-neutral-400 mb-4">스크랩한 뉴스에 참여한 매체들의 성향 분포입니다 (참고용 일반 분류)</p>

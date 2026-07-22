@@ -13,6 +13,7 @@ from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 
 import config
+from quality import is_promotional
 
 import re
 
@@ -74,6 +75,7 @@ def fetch_headlines() -> list[dict]:
     cutoff = datetime.now(timezone.utc) - timedelta(hours=config.MAX_ITEM_AGE_HOURS)
     items: list[dict] = []
     seen: set[str] = set()
+    promo_dropped = 0
 
     for feed in config.PRESS_FEEDS:
         try:
@@ -89,6 +91,9 @@ def fetch_headlines() -> list[dict]:
             link = (item.findtext("link") or "").strip()
             if not title or not link or link in seen:
                 continue
+            if is_promotional(title):  # 광고성(보도자료·홍보) 기사 제외
+                promo_dropped += 1
+                continue
             ts = _parse_ts(item.findtext("pubDate")) or datetime.now(timezone.utc)
             if ts < cutoff:
                 continue
@@ -101,4 +106,6 @@ def fetch_headlines() -> list[dict]:
                 break
         time.sleep(0.1)
 
+    if promo_dropped:
+        print(f"[품질 필터] 광고성 기사 {promo_dropped}건 제외")
     return items

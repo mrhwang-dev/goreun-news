@@ -142,10 +142,16 @@ def build_briefing(bias_model: dict | None = None) -> dict:
         bias = {"progressive": 0, "moderate": 0, "conservative": 0, "unknown": 0}
         for outlet in outlets:
             bias[effective_bias(outlet, bias_model)] += 1
+        from quality import rank_outlet_count
+
         issues_all.append(
             {
                 **meta,
                 "outlet_count": len(outlets),
+                # 전재(우라까이) 클러스터는 랭킹용 매체 수를 감쇠 (표시는 그대로)
+                "rank_outlet_count": rank_outlet_count(
+                    len(outlets), [m["title"] for m in cluster]
+                ),
                 "bias": bias,
                 "_links": [m["link"] for m in cluster],
                 "latest_ts": max(m["ts"] for m in cluster),
@@ -297,6 +303,7 @@ def main() -> None:
     out_path = build(
         briefing, community, ROOT / "site",
         archive_stamps=[s for s, _ in snapshots],
+        snapshots=snapshots,
     )
     if snapshots:
         build_archive_pages(snapshots, ROOT / "site", datetime.now(ZoneInfo("Asia/Seoul")))

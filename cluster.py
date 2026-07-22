@@ -145,7 +145,8 @@ def issue_score(issue: dict, decay_hours: float, size_exponent: float) -> float:
     """이슈 점수: (매체 수)^지수 × 최신성 감쇠. 클러스터 크기가 지배한다."""
     now = datetime.now(timezone.utc)
     age_h = max(0.0, (now - issue["latest_ts"]).total_seconds() / 3600)
-    return (issue["outlet_count"] ** size_exponent) * math.exp(-age_h / decay_hours)
+    effective = issue.get("rank_outlet_count", issue["outlet_count"])
+    return (effective ** size_exponent) * math.exp(-age_h / decay_hours)
 
 
 def category_heat(issues: list[dict], decay_hours: float) -> dict[str, float]:
@@ -154,7 +155,7 @@ def category_heat(issues: list[dict], decay_hours: float) -> dict[str, float]:
     heat: dict[str, float] = defaultdict(float)
     for issue in issues:
         age_h = max(0.0, (now - issue["latest_ts"]).total_seconds() / 3600)
-        heat[issue["category"]] += issue["outlet_count"] * math.exp(-age_h / decay_hours)
+        heat[issue["category"]] += issue.get("rank_outlet_count", issue["outlet_count"]) * math.exp(-age_h / decay_hours)
     return dict(heat)
 
 

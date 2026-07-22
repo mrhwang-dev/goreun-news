@@ -49,6 +49,7 @@ jobs:
           python tests/test_framing.py
           python tests/test_bias_model.py
           python tests/test_categorize.py
+          python tests/test_quality.py
       - name: Generate briefing
         run: python run.py
         env:
