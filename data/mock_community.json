@@ -46,5 +46,13 @@
     "title": "여름 휴가지 추천 모음 (예시)",
     "link": "https://theqoo.net/hot",
     "hot": false
+  },
+  {
+    "source": "루리웹",
+    "title": "넷마블 '신의 탑: 새로운 세계', 출시 3주년 업데이트 (예시)",
+    "link": "https://bbs.ruliweb.com/news/12345",
+    "hot": false,
+    "news": true,
+    "board_news": true
   }
 ]

@@ -3135,7 +3135,7 @@ def build_community_page(
     news_panel = (
         f"""<section class="rounded-xl border border-stone-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 p-5">
     <h2 class="text-sm font-bold mb-0.5">📰 커뮤니티가 주목한 뉴스</h2>
-    <p class="text-[11px] text-neutral-400 mb-2">해외토픽·게임·시사성 게시물</p>
+    <p class="text-[11px] text-neutral-400 mb-2">해외토픽·시사성 게시물</p>
     {news_rows}
   </section>"""
         if news_posts

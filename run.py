@@ -329,6 +329,32 @@ def main() -> None:
         punycode = config.SITE_DOMAIN.encode("idna").decode()
         build_site.set_share_base(f"https://{punycode}/archive/{stamp}/")
 
+    # 커뮤니티의 게임 보드 뉴스(board_news)를 추출해 메인 브리핑의 '게임' 카테고리 이슈로 편입
+    game_issues = []
+    filtered_community = []
+    for p in community:
+        if p.get("board_news"):
+            game_issues.append({
+                "label": p["title"],
+                "summary": "게임 전문 커뮤니티에서 실시간으로 주목받고 있는 주요 소식입니다.",
+                "category": "게임",
+                "outlet_count": 1,
+                "bias": {"moderate": 1},
+                "headlines": [{
+                    "outlet": p.get("source", "게임커뮤니티"),
+                    "title": p["title"],
+                    "link": p["link"],
+                    "time": datetime.now(ZoneInfo("Asia/Seoul")).strftime("%H:%M"),
+                    "bias": "moderate"
+                }],
+                "latest_ts": datetime.now(timezone.utc).isoformat()
+            })
+        else:
+            filtered_community.append(p)
+    
+    community = filtered_community
+    briefing["issues"].extend(game_issues)
+
     out_path = build(
         briefing, community, ROOT / "site",
         archive_stamps=[s for s, _ in snapshots],
