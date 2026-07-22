@@ -589,6 +589,9 @@ function wireNewsletterForm(form, doneEl) {
     if (!action || !entry) { toast("구독 폼이 아직 연결되지 않았습니다"); return; }
     var body = new FormData();
     body.append(entry, email);
+    body.append("_subject", "고른뉴스 뉴스레터 구독 신청");
+    body.append("_captcha", "false");
+    body.append("_template", "table");
     fetch(action, { method: "POST", mode: "no-cors", body: body }).finally(function () {
       form.hidden = true;
       if (doneEl) doneEl.hidden = false;
