@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import html
 import time
 import urllib.request
 import xml.etree.ElementTree as ET
@@ -47,8 +48,10 @@ def fetch_headlines() -> list[dict]:
             print(f"[경고] {feed['outlet']} 피드 수집 실패: {e}")
             continue
 
+        feed_count = 0
         for item in root.iter("item"):
-            title = (item.findtext("title") or "").strip()
+            # 일부 피드는 엔티티를 이중 인코딩(&amp;#8593; 등)하므로 한 번 더 해제
+            title = html.unescape((item.findtext("title") or "").strip())
             link = (item.findtext("link") or "").strip()
             if not title or not link or link in seen:
                 continue
@@ -59,6 +62,9 @@ def fetch_headlines() -> list[dict]:
             items.append(
                 {"title": title, "link": link, "outlet": feed["outlet"], "ts": ts}
             )
-        time.sleep(0.2)
+            feed_count += 1
+            if feed_count >= config.MAX_ITEMS_PER_FEED:
+                break
+        time.sleep(0.1)
 
     return items

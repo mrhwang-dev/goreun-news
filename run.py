@@ -89,9 +89,17 @@ def build_briefing() -> dict:
                 "bias": bias,
                 "_links": [m["link"] for m in cluster],
                 "latest_ts": max(m["ts"] for m in cluster),
+                # 타임라인 UI용: 송고 시간순(1보 → 최신) 정렬, 최신 N건 유지
                 "headlines": [
-                    {"outlet": m["outlet"], "title": m["title"], "link": m["link"]}
-                    for m in cluster[: config.MAX_HEADLINES_PER_ISSUE]
+                    {
+                        "outlet": m["outlet"],
+                        "title": m["title"],
+                        "link": m["link"],
+                        "time": m["ts"].astimezone(timezone(timedelta(hours=9))).strftime("%H:%M"),
+                    }
+                    for m in sorted(cluster, key=lambda m: m["ts"])[
+                        -config.MAX_HEADLINES_PER_ISSUE :
+                    ]
                 ],
             }
         )
@@ -101,6 +109,8 @@ def build_briefing() -> dict:
         config.TOP_ISSUES,
         config.MAX_ISSUES_PER_CATEGORY,
         config.HEAT_DECAY_HOURS,
+        size_exponent=config.SIZE_EXPONENT,
+        pin_top=config.TOP_PIN_COUNT,
     )
     print("분야별 슬롯:", slots)
 

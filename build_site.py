@@ -62,6 +62,8 @@ details[open] .tri { transform: rotate(180deg); }
 .summary-wrap .fade { @apply absolute bottom-0 inset-x-0 h-5 bg-gradient-to-t from-white dark:from-neutral-800 to-transparent pointer-events-none transition-opacity; }
 .summary-wrap.open .fade, .summary-wrap.no-clamp .fade { opacity: 0; }
 .summary-wrap.no-clamp { cursor: default; }
+/* 무한 스크롤: 아직 공개되지 않은 카드 */
+.not-revealed { display: none; }
 /* 티커 → 카드 도착 하이라이트 (2초간 은은한 블루 링) */
 .flash-ring { animation: flashRing 1s ease-in-out 2; }
 @keyframes flashRing {
@@ -74,11 +76,15 @@ details[open] .tri { transform: rotate(180deg); }
 }
 """
 
-AD_SLOT = (
-    '<div class="rounded-xl border border-dashed border-stone-300 dark:border-neutral-600 '
-    'bg-stone-100 dark:bg-neutral-800/60 text-neutral-400 text-xs text-center px-4 py-7">'
-    "광고 영역 — AdSense/카카오 AdFit 승인 후 코드 삽입</div>"
-)
+def ad_slot(unit_id: str) -> str:
+    """광고 슬롯 모듈 — CLS 방지를 위해 min-h 고정 + 로드 전 스켈레톤 배경.
+
+    승인 후 이 div 내부에 AdSense/AdFit 코드를 삽입한다 (unit_id로 슬롯 구분).
+    """
+    return f"""<div class="ad-unit relative overflow-hidden rounded-xl border border-stone-200 dark:border-neutral-700 min-h-[250px] flex items-center justify-center" data-ad-unit="{unit_id}">
+  <div class="absolute inset-0 animate-pulse bg-gradient-to-br from-stone-100 to-stone-200 dark:from-neutral-800 dark:to-neutral-700" aria-hidden="true"></div>
+  <span class="relative text-neutral-400 text-xs">광고 영역 ({unit_id}) — AdSense/카카오 AdFit 코드 삽입</span>
+</div>"""
 
 DISCLAIMER = (
     "고른뉴스는 언론사 기사 본문을 수집·저장·복제하지 않습니다. 이슈 카드는 각 언론사가 "
@@ -164,6 +170,33 @@ if (pageFeed) {
       .catch(showOfflineBanner);
   }, 10 * 60 * 1000);
 }
+
+// ── 무한 스크롤 (Intersection Observer, 12개씩 지연 공개) ──
+var lazyCards = Array.prototype.slice.call(document.querySelectorAll(".not-revealed"));
+var feedSentinel = document.getElementById("feed-sentinel");
+function revealBatch(n) {
+  for (var i = 0; i < n && lazyCards.length; i++) {
+    lazyCards.shift().classList.remove("not-revealed");
+  }
+  if (!lazyCards.length && feedSentinel) {
+    feedSentinel.remove();
+    feedSentinel = null;
+  }
+}
+if (feedSentinel && lazyCards.length && "IntersectionObserver" in window) {
+  var feedObserver = new IntersectionObserver(function (entries) {
+    entries.forEach(function (entry) {
+      if (entry.isIntersecting) revealBatch(12);
+    });
+  }, { rootMargin: "600px 0px" });
+  feedObserver.observe(feedSentinel);
+} else {
+  revealBatch(Infinity);
+}
+// 분야 필터 사용 시에는 전부 공개해 필터 결과가 잘리지 않게 한다
+tabs.forEach(function (tab) {
+  tab.addEventListener("click", function () { revealBatch(Infinity); });
+});
 
 // ── AI 요약 3줄 클램프: 클릭 시 부드럽게 펼침 ──
 document.querySelectorAll(".summary-wrap").forEach(function (wrap) {
@@ -317,7 +350,7 @@ document.querySelectorAll(".policy-item").forEach(function (item) {
   var text = item.querySelector(".policy-text");
   var meta = item.querySelector(".read-time");
   if (text && meta) {
-    meta.textContent = Math.max(1, Math.ceil(text.textContent.length / 500)) + "분 소요";
+    meta.textContent = "약 " + Math.max(1, Math.ceil(text.textContent.length / 500)) + "분";
   }
 });
 
@@ -659,8 +692,16 @@ def _render_issue(issue: dict, index: int) -> str:
         },
         ensure_ascii=False,
     ))
+    # 수직 타임라인: 송고 시간순(1보 → 최신)으로 사건의 흐름을 보여준다
     rows = "".join(
-        f'<li><a class="flex items-start gap-2 text-[13px] hover:text-blue-600 dark:hover:text-blue-400" '
+        f'<li class="relative">'
+        f'<span class="absolute -left-[21px] top-1 w-2.5 h-2.5 rounded-full bg-white dark:bg-neutral-800 border-2" style="border-color:{color}" aria-hidden="true"></span>'
+        + (
+            f'<time class="block text-[11px] text-neutral-400 tabular-nums leading-tight">{_esc(h["time"])}</time>'
+            if h.get("time")
+            else ""
+        )
+        + f'<a class="flex items-start gap-2 text-[13px] hover:text-blue-600 dark:hover:text-blue-400" '
         f'href="{_esc(h["link"])}" target="_blank" rel="noopener nofollow">'
         f'{_favicon(h["link"])}'
         f'<span class="min-w-0"><b class="font-semibold text-neutral-400 text-xs mr-1.5">{_esc(h["outlet"])}</b>'
@@ -686,7 +727,7 @@ def _render_issue(issue: dict, index: int) -> str:
         매체별 헤드라인 {len(heads)}건 <span class="tri">▾</span>
       </summary>
       <div class="mt-3">{_render_bias_bar(issue.get("bias"))}</div>
-      <ul class="flex flex-col gap-1.5">{rows}</ul>
+      <ul class="relative ml-1.5 pl-4 border-l-2 border-stone-200 dark:border-neutral-700 flex flex-col gap-3">{rows}</ul>
     </details>
     <button type="button" class="share-btn shrink-0 self-start rounded-lg border border-stone-200 dark:border-neutral-600 px-3 py-1.5 text-xs text-neutral-500 dark:text-neutral-400 hover:text-blue-600 hover:border-blue-500" data-anchor="{anchor}" data-title="{_esc(issue["label"])}" data-text="{_esc(issue["summary"])}">공유하기</button>
   </div>
@@ -719,7 +760,7 @@ def _render_sidebar(policy: list[dict]) -> str:
     <p class="text-[11px] text-neutral-400 mb-3">출처: 대한민국 정책브리핑(korea.kr) · 공공누리 제1유형</p>
     {items}
   </section>
-  {AD_SLOT}
+  {ad_slot("sidebar-1")}
   {newsletter_form}
   <section class="rounded-xl border border-stone-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 p-5">
     <h2 class="text-sm font-bold mb-0.5">공개 API</h2>
@@ -762,9 +803,16 @@ def build(briefing: dict, community: list[dict], out_dir: Path) -> Path:
 
     cards = []
     for i, issue in enumerate(issues):
-        cards.append(_render_issue(issue, i))
-        if i == 5:
-            cards.append(f'<div class="sm:col-span-2">{AD_SLOT}</div>')
+        card = _render_issue(issue, i)
+        if i >= config.INITIAL_CARDS:
+            # 무한 스크롤: 최초 12개 이후는 숨겨 두고 스크롤 시 12개씩 공개
+            card = card.replace('<article id=', '<article data-lazy="1" id=', 1).replace(
+                'class="rounded-xl', 'class="not-revealed rounded-xl', 1
+            )
+        cards.append(card)
+        if i == 3:  # 4번째와 5번째 카드 사이 광고
+            cards.append(f'<div class="sm:col-span-2">{ad_slot("feed-1")}</div>')
+    cards.append('<div id="feed-sentinel" class="sm:col-span-2 h-1" aria-hidden="true"></div>')
 
     main_html = f"""<div class="grid grid-cols-1 lg:grid-cols-[7fr_3fr] gap-7 py-6">
   <section class="grid sm:grid-cols-2 gap-4 content-start" aria-label="주요 이슈">{"".join(cards)}</section>
@@ -795,7 +843,71 @@ def build(briefing: dict, community: list[dict], out_dir: Path) -> Path:
 
     build_community_page(community, out_dir, generated_at, now, updated, stamp)
     build_scrapbook_page(out_dir, generated_at, now, updated, stamp)
+    build_seo_files(briefing, out_dir, punycode_domain, now)
     return out_dir / "index.html"
+
+
+# ── SEO: sitemap.xml / rss.xml / robots.txt 자동 생성 ───────────────────
+
+
+def build_seo_files(
+    briefing: dict, out_dir: Path, domain: str, now: datetime
+) -> None:
+    from email.utils import format_datetime
+
+    base = f"https://{domain}"
+    lastmod = now.strftime("%Y-%m-%dT%H:%M:%S%z")
+    lastmod = lastmod[:-2] + ":" + lastmod[-2:]  # +0900 → +09:00
+
+    pages = [
+        ("", "1.0", "hourly"),
+        ("community.html", "0.8", "hourly"),
+        ("scrapbook.html", "0.3", "monthly"),
+    ]
+    urls = "".join(
+        f"<url><loc>{base}/{path}</loc><lastmod>{lastmod}</lastmod>"
+        f"<changefreq>{freq}</changefreq><priority>{prio}</priority></url>"
+        for path, prio, freq in pages
+    )
+    (out_dir / "sitemap.xml").write_text(
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
+        f"{urls}</urlset>",
+        encoding="utf-8",
+    )
+
+    # RSS: 이슈를 중요도 순(briefing["issues"] 순서 = 점수 순)으로 제공
+    items = []
+    for i, issue in enumerate(briefing.get("issues", [])):
+        try:
+            pub = format_datetime(datetime.fromisoformat(issue["latest_ts"]))
+        except (KeyError, ValueError):
+            pub = format_datetime(now)
+        items.append(
+            "<item>"
+            f"<title>{html.escape(issue['label'])}</title>"
+            f"<link>{base}/#issue-{i}</link>"
+            f"<description>{html.escape(issue['summary'])}</description>"
+            f"<category>{html.escape(issue['category'])}</category>"
+            f"<pubDate>{pub}</pubDate>"
+            f'<guid isPermaLink="false">goreun-issue-{html.escape(issue["label"])}</guid>'
+            "</item>"
+        )
+    (out_dir / "rss.xml").write_text(
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<rss version="2.0"><channel>'
+        f"<title>{html.escape(config.SITE_TITLE)}</title>"
+        f"<link>{base}/</link>"
+        f"<description>{html.escape(config.SITE_TAGLINE)} — 여러 언론사의 헤드라인을 교차 확인한 중립 뉴스 브리핑</description>"
+        "<language>ko</language>"
+        f"<lastBuildDate>{format_datetime(now)}</lastBuildDate>"
+        f"{''.join(items)}</channel></rss>",
+        encoding="utf-8",
+    )
+
+    (out_dir / "robots.txt").write_text(
+        f"User-agent: *\nAllow: /\n\nSitemap: {base}/sitemap.xml\n", encoding="utf-8"
+    )
 
 
 # ── 커뮤니티 페이지 ─────────────────────────────────────────────────────
@@ -844,7 +956,7 @@ def build_community_page(
 
     main_html = f"""<div class="max-w-3xl mx-auto py-6 flex flex-col gap-5">
   <ol class="rounded-xl border border-stone-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 divide-y divide-stone-200 dark:divide-neutral-700 overflow-hidden">{"".join(rows)}</ol>
-  {AD_SLOT}
+  {ad_slot("community-1")}
 </div>"""
 
     page = _page(

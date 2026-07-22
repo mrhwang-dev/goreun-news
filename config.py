@@ -7,13 +7,40 @@ import os
 #   - 제목은 저작물성 부정(판례), 링크는 침해 아님(대법원 2009다4343)
 #   - 제외: SBS(비상업 한정 명시), 한겨레(피드에 AI 활용 금지 명시),
 #           매일경제(봇 차단), 중앙일보(RSS 중단), 연합뉴스(미제공)
+# 2026-07-22 전수 응답 테스트로 검증된 피드만 등록 (미제공·차단·금지 명시 매체 제외)
 PRESS_FEEDS = [
+    # 종합 일간지
     {"outlet": "조선일보", "url": "https://www.chosun.com/arc/outboundfeeds/rss/?outputType=xml"},
     {"outlet": "경향신문", "url": "https://www.khan.co.kr/rss/rssdata/total_news.xml"},
     {"outlet": "동아일보", "url": "https://rss.donga.com/total.xml"},
-    {"outlet": "한국경제", "url": "https://www.hankyung.com/feed/all-news"},
     {"outlet": "세계일보", "url": "https://www.segye.com/Articles/RSSList/segye_recent.xml"},
+    # 방송·통신
+    {"outlet": "MBN", "url": "https://www.mbn.co.kr/rss/"},
+    {"outlet": "연합뉴스TV", "url": "https://www.yonhapnewstv.co.kr/browse/feed/"},
+    {"outlet": "노컷뉴스", "url": "https://rss.nocutnews.co.kr/nocutnews.xml"},
+    # 경제지
+    {"outlet": "한국경제", "url": "https://www.hankyung.com/feed/all-news"},
+    {"outlet": "머니투데이", "url": "https://rss.mt.co.kr/mt_news.xml"},
+    {"outlet": "이데일리", "url": "https://rss.edaily.co.kr/edaily_news.xml"},
+    # IT
+    {"outlet": "전자신문", "url": "https://rss.etnews.com/Section901.xml"},
+    # 인터넷·주간지
+    {"outlet": "오마이뉴스", "url": "http://rss.ohmynews.com/rss/ohmynews.xml"},
+    {"outlet": "미디어오늘", "url": "http://www.mediatoday.co.kr/rss/allArticle.xml"},
+    {"outlet": "시사인", "url": "https://www.sisain.co.kr/rss/allArticle.xml"},
+    {"outlet": "시사저널", "url": "http://www.sisajournal.com/rss/allArticle.xml"},
+    # 지역지
+    {"outlet": "경남신문", "url": "http://www.knnews.co.kr/rss/rss.php"},
+    {"outlet": "경북일보", "url": "https://www.kyongbuk.co.kr/rss/allArticle.xml"},
+    {"outlet": "대전일보", "url": "https://www.daejonilbo.com/rss/allArticle.xml"},
+    {"outlet": "인천일보", "url": "https://www.incheonilbo.com/rss/allArticle.xml"},
+    {"outlet": "울산매일", "url": "https://www.iusm.co.kr/rss/allArticle.xml"},
+    {"outlet": "충청투데이", "url": "https://www.cctoday.co.kr/rss/allArticle.xml"},
+    {"outlet": "제주의소리", "url": "https://www.jejusori.net/rss/allArticle.xml"},
 ]
+
+# 피드당 최대 수집 기사 수 (전체 볼륨 상한 관리)
+MAX_ITEMS_PER_FEED = 40
 
 # 정책 브리핑: 대한민국 정책브리핑(korea.kr) 정책뉴스.
 # 공공누리 제1유형 — 출처표시 조건으로 상업적 이용·변형(AI 요약) 허용.
@@ -25,11 +52,18 @@ POLICY_COUNT = 6  # 요약할 정책뉴스 수
 MAX_ITEM_AGE_HOURS = 24    # 이 시간 이내 기사만 사용
 JACCARD_THRESHOLD = 0.30   # 문자 2-그램 자카드 유사도 임계값
 OVERLAP_THRESHOLD = 0.40   # 겹침 계수 임계값 (제목 길이 차이 보완)
-CANDIDATE_ISSUES = 30      # AI 라벨링 대상 상위 클러스터 수
-TOP_ISSUES = 12            # 사이트에 노출할 최종 이슈 수
-MAX_ISSUES_PER_CATEGORY = 5  # 핫 분야라도 이 이상은 배분하지 않음
+CANDIDATE_ISSUES = 60      # AI 라벨링 대상 상위 클러스터 수
+TOP_ISSUES = 48            # 사이트에 노출할 최종 이슈 수
+MAX_ISSUES_PER_CATEGORY = 12  # 핫 분야라도 이 이상은 배분하지 않음
 HEAT_DECAY_HOURS = 6.0     # 열기 계산의 최신성 감쇠 상수(시간)
-MAX_HEADLINES_PER_ISSUE = 6
+MAX_HEADLINES_PER_ISSUE = 20
+
+# 랭킹: 클러스터 크기(참여 매체 수)에 최우선 가중치
+SIZE_EXPONENT = 2.0        # 이슈 점수 = 매체수^지수 × e^(-경과시간/감쇠)
+TOP_PIN_COUNT = 3          # 점수 상위 N개는 분야 배분과 무관하게 최상단 고정
+
+# 프론트: 최초 렌더링 카드 수 (이후 무한 스크롤로 12개씩 추가)
+INITIAL_CARDS = 12
 
 # 이슈 분류 카테고리 (AI가 이 중 하나를 지정)
 ISSUE_CATEGORIES = ["정치", "경제", "사회", "국제", "IT·과학", "생활·문화"]
@@ -40,7 +74,12 @@ OUTLET_BIAS = {
     "조선일보": "conservative",
     "동아일보": "conservative",
     "세계일보": "conservative",
+    "MBN": "conservative",
     "경향신문": "progressive",
+    "오마이뉴스": "progressive",
+    "시사인": "progressive",
+    "미디어오늘": "progressive",
+    # 나머지(경제지·통신·IT·지역지)는 기본값 moderate 처리
     "한국경제": "moderate",
 }
 

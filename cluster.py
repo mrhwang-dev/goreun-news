@@ -123,19 +123,29 @@ def cluster_items(
     return clusters
 
 
-# ── 핫 분야 슬롯 배분 알고리즘 ──────────────────────────────────────────
+# ── 이슈 점수·핫 분야 슬롯 배분 알고리즘 ────────────────────────────────
 #
-# 업데이트 시점마다 '지금 뜨거운 분야'의 이슈 꼭지가 더 많이 노출되도록
-# 분야별 열기(heat)를 계산해 노출 슬롯을 비례 배분한다.
-#
-# 1) 열기: heat(분야) = Σ_{이슈∈분야} (참여 매체 수 × e^(-경과시간/감쇠상수))
-#    - 여러 매체가 '방금' 동시에 다룬 사건이 많은 분야일수록 점수가 높다.
-#    - 감쇠상수(기본 6시간)가 지나면 기여도가 1/e로 줄어 오래된 이슈의
-#      영향이 자연스럽게 사라진다.
-# 2) 배분: 의석 배분에 쓰이는 동트(D'Hondt) 방식.
+# 1) 이슈 점수 (Cluster Size 최우선):
+#    score(이슈) = (참여 매체 수)^SIZE_EXPONENT × e^(-경과시간/감쇠상수)
+#    - 매체 수에 지수(기본 2.0)를 걸어, 많은 언론사가 동시에 다룬 대형
+#      사건일수록 압도적으로 높은 점수를 받는다. (12개 매체 이슈는
+#      3개 매체 이슈의 4배가 아니라 16배)
+#    - 최신성은 지수 감쇠로 유지 — 오래된 대형 이슈는 서서히 내려간다.
+# 2) 최상단 고정: 점수 상위 TOP_PIN_COUNT(기본 3)개는 분야 배분과
+#    무관하게 무조건 그리드 1~3위를 차지한다.
+# 3) 분야별 열기: heat(분야) = Σ (매체 수 × e^(-경과시간/감쇠상수)) —
+#    필터 칩의 🔥 표시와 나머지 슬롯의 비례 배분에 쓴다.
+# 4) 나머지 슬롯 배분: 동트(D'Hondt) 방식.
 #    다음 슬롯을 heat/(이미 받은 슬롯 수 + 1)이 가장 큰 분야에 준다.
 #    - 이슈가 있는 분야는 최소 1슬롯 보장 (완전히 묻히지 않게)
 #    - 분야당 상한(cap)으로 한 분야의 독식 방지
+
+
+def issue_score(issue: dict, decay_hours: float, size_exponent: float) -> float:
+    """이슈 점수: (매체 수)^지수 × 최신성 감쇠. 클러스터 크기가 지배한다."""
+    now = datetime.now(timezone.utc)
+    age_h = max(0.0, (now - issue["latest_ts"]).total_seconds() / 3600)
+    return (issue["outlet_count"] ** size_exponent) * math.exp(-age_h / decay_hours)
 
 
 def category_heat(issues: list[dict], decay_hours: float) -> dict[str, float]:
@@ -149,23 +159,36 @@ def category_heat(issues: list[dict], decay_hours: float) -> dict[str, float]:
 
 
 def allocate_slots(
-    issues: list[dict], total: int, cap: int, decay_hours: float
+    issues: list[dict],
+    total: int,
+    cap: int,
+    decay_hours: float,
+    size_exponent: float = 2.0,
+    pin_top: int = 3,
 ) -> tuple[list[dict], dict[str, float], dict[str, int]]:
-    """열기 비례로 분야별 슬롯을 배분하고 최종 노출 이슈를 고른다.
+    """이슈 점수순 정렬 + 상위 고정 + 나머지는 열기 비례 분야 배분.
 
-    issues는 랭킹 순(중요한 것부터)이라고 가정한다.
-    반환: (선택된 이슈 목록 — 원래 랭킹 순, 분야별 열기, 분야별 슬롯 수)
+    반환: (선택된 이슈 목록 — 점수 내림차순, 분야별 열기, 분야별 슬롯 수)
     """
     heat = category_heat(issues, decay_hours)
+
+    # 점수순 정렬 — 클러스터 크기가 큰 대형 이슈가 앞으로 온다
+    ranked = sorted(
+        issues, key=lambda i: issue_score(i, decay_hours, size_exponent), reverse=True
+    )
+
+    # 점수 상위 pin_top개는 분야와 무관하게 무조건 최상단 고정
+    pinned = ranked[: min(pin_top, total)]
+    rest = ranked[len(pinned):]
+    remaining_total = total - len(pinned)
+
     avail: dict[str, int] = defaultdict(int)
-    for issue in issues:
+    for issue in rest:
         avail[issue["category"]] += 1
 
     cats = sorted(avail, key=lambda c: heat.get(c, 0.0), reverse=True)
-
-    # 최소 1슬롯 보장 (분야 수가 총 슬롯보다 많으면 열기 상위 분야만)
-    slots = {c: 1 for c in cats[:total]}
-    remaining = total - len(slots)
+    slots = {c: 1 for c in cats[:remaining_total]}
+    remaining = remaining_total - len(slots)
 
     # 동트 방식: heat/(현재 슬롯+1)이 가장 큰 분야에 다음 슬롯
     while remaining > 0:
@@ -176,12 +199,16 @@ def allocate_slots(
         slots[best] += 1
         remaining -= 1
 
-    # 분야별 슬롯만큼 랭킹 상위 이슈 선택
     taken: dict[str, int] = defaultdict(int)
-    selected = []
-    for issue in issues:
+    selected_rest = []
+    for issue in rest:  # rest는 이미 점수순
         cat = issue["category"]
         if cat in slots and taken[cat] < slots[cat]:
-            selected.append(issue)
+            selected_rest.append(issue)
             taken[cat] += 1
-    return selected, heat, slots
+
+    # 고정 이슈도 분야 슬롯 집계에 반영 (탭 뱃지 표시용)
+    for issue in pinned:
+        slots[issue["category"]] = slots.get(issue["category"], 0) + 1
+
+    return pinned + selected_rest, heat, slots
