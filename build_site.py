@@ -1,16 +1,19 @@
 """브리핑 데이터를 Tailwind 기반 인터랙티브 정적 페이지로 렌더링한다.
 
 - index.html: 뉴스 대시보드 — 좌 70% 이슈 카드 그리드 / 우 30% 사이드바
-  (정책 브리핑·공개 API), 모바일은 1단. 카테고리 탭(+기사 수 뱃지) 필터,
-  탭 아래 속보 티커(페이드 전환, prefers-reduced-motion 존중).
-- community.html: 커뮤니티 인기글 전용 페이지 (소스 탭 필터).
-- 10분마다 JSON 폴링으로 새 브리핑 감지 시 자동 새로고침.
-- 버그 제보: Sentry Feedback 위젯. 공개 API: /briefing.json, /community.json
+  (정책 브리핑·광고·뉴스레터·공개 API), 모바일 1단. 카테고리 탭(+뱃지) 필터,
+  속보 티커(페이드 전환), 성향 스펙트럼 바, 스크랩·공유 버튼.
+- community.html: 커뮤니티 인기글 전용 페이지 (소스 탭, 🔥 HOT 하이라이트).
+- scrapbook.html: localStorage 기반 스크랩북 (클라이언트 렌더링).
+- 공통: 글자 크기 조절(가/가+), 모바일 스크롤 헤더 숨김 + Top FAB,
+  서비스워커 오프라인 페일세이프 + 경고 배너, 10분 주기 갱신 감지,
+  Sentry 버그 제보. 공개 API: /briefing.json, /community.json
 """
 
 from __future__ import annotations
 
 import html
+import json
 import urllib.parse
 from datetime import datetime
 from pathlib import Path
@@ -44,9 +47,18 @@ CUSTOM_STYLE = """
 .tab[aria-selected="true"] .badge { @apply bg-white/20 dark:bg-black/10; }
 details[open] .tri { transform: rotate(180deg); }
 .tri { transition: transform 0.15s; }
-.ticker-item { transition: opacity 0.5s; }
-.ticker-item.show { opacity: 1; }
-@media (prefers-reduced-motion: reduce) { .ticker-item, .tri { transition: none; } }
+/* 티커: 숨은 항목이 클릭을 가로채지 않도록 pointer-events/visibility 제어 */
+.ticker-item { opacity: 0; visibility: hidden; pointer-events: none; transition: opacity 0.5s, visibility 0.5s; }
+.ticker-item.show { opacity: 1; visibility: visible; pointer-events: auto; }
+/* 글자 크기 단계 (가/가+) — 기본은 1단계 */
+:root[data-fs="0"] .fs-t { font-size: 14px; }
+:root[data-fs="0"] .fs-p { font-size: 12.5px; }
+:root[data-fs="2"] .fs-t { font-size: 17px; }
+:root[data-fs="2"] .fs-p { font-size: 15.5px; }
+#site-header { transition: transform 0.3s; }
+@media (prefers-reduced-motion: reduce) {
+  .ticker-item, .tri, #site-header { transition: none; }
+}
 """
 
 AD_SLOT = (
@@ -58,8 +70,8 @@ AD_SLOT = (
 DISCLAIMER = (
     "고른뉴스는 언론사 기사 본문을 수집·저장·복제하지 않습니다. 이슈 카드는 각 언론사가 "
     "공개한 헤드라인(제목)과 원문 링크만을 표시하며, 요약문은 헤드라인에 담긴 정보만을 "
-    "근거로 AI가 새로 작성한 문장입니다. 모든 기사의 저작권은 각 언론사에 있으며, "
-    "자세한 내용은 반드시 원문 기사를 확인해 주세요."
+    "근거로 AI가 새로 작성한 문장입니다. 매체 성향 분류는 참고용 일반 분류입니다. "
+    "모든 기사의 저작권은 각 언론사에 있으며, 자세한 내용은 반드시 원문 기사를 확인해 주세요."
 )
 
 KOGL_NOTICE = (
@@ -72,52 +84,204 @@ COMMUNITY_NOTICE = (
     "게시글의 저작권은 각 작성자와 해당 커뮤니티에 있습니다."
 )
 
+BIAS_LABELS = [("progressive", "진보"), ("moderate", "중도"), ("conservative", "보수")]
+BIAS_BAR_CLASSES = {
+    "progressive": "bg-blue-500",
+    "moderate": "bg-neutral-400",
+    "conservative": "bg-red-500",
+}
+
 BASE_SCRIPT = """
-(function () {
-  // 탭 필터 (뉴스: data-cat / 커뮤니티: data-src)
-  var tabs = document.querySelectorAll(".tab");
-  tabs.forEach(function (tab) {
-    tab.addEventListener("click", function () {
-      tabs.forEach(function (t) { t.setAttribute("aria-selected", "false"); });
-      tab.setAttribute("aria-selected", "true");
-      var key = tab.dataset.filter;
-      var val = tab.dataset.value;
-      document.querySelectorAll("[data-" + key + "]").forEach(function (el) {
-        el.hidden = val !== "전체" && el.dataset[key] !== val;
-      });
+// ── 탭 필터 (뉴스: data-cat / 커뮤니티: data-src) ──
+var tabs = document.querySelectorAll(".tab");
+tabs.forEach(function (tab) {
+  tab.addEventListener("click", function () {
+    tabs.forEach(function (t) { t.setAttribute("aria-selected", "false"); });
+    tab.setAttribute("aria-selected", "true");
+    var key = tab.dataset.filter;
+    var val = tab.dataset.value;
+    document.querySelectorAll("[data-" + key + "]").forEach(function (el) {
+      el.hidden = val !== "전체" && el.dataset[key] !== val;
     });
   });
+});
 
-  // 속보 티커: 5초 간격 페이드 전환 (모션 최소화 설정 시 첫 항목 고정)
-  var items = document.querySelectorAll(".ticker-item");
-  if (items.length) {
-    var reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    items[0].classList.add("show");
-    if (!reduced && items.length > 1) {
-      var idx = 0;
-      setInterval(function () {
-        items[idx].classList.remove("show");
-        idx = (idx + 1) % items.length;
-        items[idx].classList.add("show");
-      }, 5000);
-    }
-  }
-
-  // 새 데이터 감지 → 자동 새로고침 (10분 주기)
-  var root = document.documentElement;
-  var current = root.dataset.generatedAt;
-  var feed = root.dataset.feed;
-  if (feed) {
+// ── 속보 티커: 5초 간격 페이드 전환 (모션 최소화 설정 시 첫 항목 고정) ──
+var tickerItems = document.querySelectorAll(".ticker-item");
+if (tickerItems.length) {
+  var reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  tickerItems[0].classList.add("show");
+  if (!reducedMotion && tickerItems.length > 1) {
+    var tickerIdx = 0;
     setInterval(function () {
-      fetch(feed, { cache: "no-store" })
-        .then(function (r) { return r.json(); })
-        .then(function (d) {
-          if (d.generated_at && d.generated_at !== current) location.reload();
-        })
-        .catch(function () {});
-    }, 10 * 60 * 1000);
+      tickerItems[tickerIdx].classList.remove("show");
+      tickerIdx = (tickerIdx + 1) % tickerItems.length;
+      tickerItems[tickerIdx].classList.add("show");
+    }, 5000);
   }
-})();
+}
+
+// ── 오프라인 페일세이프: 서비스워커 캐시 + 경고 배너 ──
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("sw.js").catch(function () {});
+}
+function showOfflineBanner() {
+  var banner = document.getElementById("offline-banner");
+  if (banner) banner.hidden = false;
+}
+function hideOfflineBanner() {
+  var banner = document.getElementById("offline-banner");
+  if (banner) banner.hidden = true;
+}
+window.addEventListener("offline", showOfflineBanner);
+window.addEventListener("online", hideOfflineBanner);
+if (!navigator.onLine) showOfflineBanner();
+
+// ── 새 데이터 감지 → 자동 새로고침 (10분 주기, 실패 시 배너) ──
+var pageFeed = document.documentElement.dataset.feed;
+var pageGeneratedAt = document.documentElement.dataset.generatedAt;
+if (pageFeed) {
+  setInterval(function () {
+    fetch(pageFeed, { cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        hideOfflineBanner();
+        if (d.generated_at && d.generated_at !== pageGeneratedAt) location.reload();
+      })
+      .catch(showOfflineBanner);
+  }, 10 * 60 * 1000);
+}
+
+// ── 토스트 ──
+var toastEl;
+function toast(msg) {
+  if (!toastEl) {
+    toastEl = document.createElement("div");
+    toastEl.className = "fixed bottom-6 left-1/2 -translate-x-1/2 z-50 rounded-full " +
+      "bg-neutral-900 text-stone-50 dark:bg-neutral-100 dark:text-neutral-900 " +
+      "text-sm px-4 py-2 shadow-lg opacity-0 transition-opacity pointer-events-none";
+    document.body.appendChild(toastEl);
+  }
+  toastEl.textContent = msg;
+  toastEl.style.opacity = "1";
+  clearTimeout(toastEl._t);
+  toastEl._t = setTimeout(function () { toastEl.style.opacity = "0"; }, 1800);
+}
+
+// ── 스크랩 (localStorage) ──
+var SCRAP_KEY = "goreun_scraps";
+function loadScraps() {
+  try { return JSON.parse(localStorage.getItem(SCRAP_KEY)) || []; }
+  catch (e) { return []; }
+}
+function saveScraps(list) { localStorage.setItem(SCRAP_KEY, JSON.stringify(list)); }
+function isScrapped(id) {
+  return loadScraps().some(function (s) { return s.id === id; });
+}
+function toggleScrap(item) {
+  var list = loadScraps();
+  var i = list.findIndex(function (s) { return s.id === item.id; });
+  if (i >= 0) { list.splice(i, 1); }
+  else { item.saved_at = new Date().toISOString(); list.push(item); }
+  saveScraps(list);
+  return i < 0;
+}
+function paintStar(btn, on) {
+  btn.textContent = on ? "★" : "☆";
+  btn.classList.toggle("text-amber-500", on);
+  btn.setAttribute("aria-pressed", on ? "true" : "false");
+}
+document.querySelectorAll(".scrap-btn").forEach(function (btn) {
+  paintStar(btn, isScrapped(JSON.parse(btn.dataset.scrap).id));
+  btn.addEventListener("click", function (e) {
+    e.preventDefault();
+    var on = toggleScrap(JSON.parse(btn.dataset.scrap));
+    paintStar(btn, on);
+    toast(on ? "스크랩북에 저장했습니다 ★" : "스크랩을 해제했습니다");
+  });
+});
+
+// ── 공유 (모바일: OS 공유 시트 / 데스크톱: 클립보드 복사 + 토스트) ──
+document.querySelectorAll(".share-btn").forEach(function (btn) {
+  btn.addEventListener("click", function () {
+    var url = location.origin + location.pathname +
+      (btn.dataset.anchor ? "#" + btn.dataset.anchor : "");
+    if (navigator.share) {
+      navigator.share({ title: btn.dataset.title, text: btn.dataset.text, url: url })
+        .catch(function () {});
+    } else if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(url).then(
+        function () { toast("링크가 복사되었습니다"); },
+        function () { toast("복사에 실패했습니다"); }
+      );
+    }
+  });
+});
+
+// ── 글자 크기 조절 (가/가+, localStorage 유지) ──
+var FS_KEY = "goreun_fs";
+function applyFs(level) {
+  level = Math.max(0, Math.min(2, level));
+  document.documentElement.dataset.fs = String(level);
+  localStorage.setItem(FS_KEY, String(level));
+  return level;
+}
+var fsLevel = applyFs(parseInt(localStorage.getItem(FS_KEY) || "1", 10));
+var fsDown = document.getElementById("fs-down");
+var fsUp = document.getElementById("fs-up");
+if (fsDown) fsDown.addEventListener("click", function () { fsLevel = applyFs(fsLevel - 1); });
+if (fsUp) fsUp.addEventListener("click", function () { fsLevel = applyFs(fsLevel + 1); });
+
+// ── 정책 브리핑 예상 읽기 시간 (약 500자/분) ──
+document.querySelectorAll(".policy-item").forEach(function (item) {
+  var text = item.querySelector(".policy-text");
+  var meta = item.querySelector(".read-time");
+  if (text && meta) {
+    meta.textContent = Math.max(1, Math.ceil(text.textContent.length / 500)) + "분 소요";
+  }
+});
+
+// ── 뉴스레터 구독 (구글 폼 AJAX 제출) ──
+var newsletter = document.getElementById("newsletter");
+if (newsletter) {
+  newsletter.addEventListener("submit", function (e) {
+    e.preventDefault();
+    var action = newsletter.dataset.action;
+    var entry = newsletter.dataset.entry;
+    var email = newsletter.querySelector("input[type=email]").value;
+    if (!action || !entry) { toast("구독 폼이 아직 연결되지 않았습니다"); return; }
+    var body = new FormData();
+    body.append(entry, email);
+    fetch(action, { method: "POST", mode: "no-cors", body: body })
+      .finally(function () {
+        newsletter.hidden = true;
+        document.getElementById("newsletter-done").hidden = false;
+      });
+  });
+}
+
+// ── 모바일: 스크롤 다운 시 헤더 숨김 / 업 시 표시 + Top FAB ──
+var siteHeader = document.getElementById("site-header");
+var toTop = document.getElementById("to-top");
+var lastY = window.scrollY;
+var mobileMq = window.matchMedia("(max-width: 1023px)");
+window.addEventListener("scroll", function () {
+  var y = window.scrollY;
+  if (siteHeader && mobileMq.matches) {
+    if (y > lastY && y > 120) siteHeader.style.transform = "translateY(-100%)";
+    else siteHeader.style.transform = "";
+  } else if (siteHeader) {
+    siteHeader.style.transform = "";
+  }
+  lastY = y;
+  if (toTop) toTop.hidden = y < 600;
+}, { passive: true });
+if (toTop) {
+  toTop.addEventListener("click", function () {
+    var reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    window.scrollTo({ top: 0, behavior: reduced ? "auto" : "smooth" });
+  });
+}
 
 window.sentryOnLoad = function () {
   Sentry.init({
@@ -139,6 +303,97 @@ window.sentryOnLoad = function () {
   var btn = document.getElementById("bug-report");
   if (feedback && btn) feedback.attachTo(btn, {});
 };
+"""
+
+SCRAPBOOK_SCRIPT = """
+(function () {
+  var listEl = document.getElementById("scrap-news");
+  var postsEl = document.getElementById("scrap-posts");
+
+  function el(tag, cls, text) {
+    var node = document.createElement(tag);
+    if (cls) node.className = cls;
+    if (text) node.textContent = text;
+    return node;
+  }
+
+  function render() {
+    var scraps = loadScraps().sort(function (a, b) {
+      return (b.saved_at || "").localeCompare(a.saved_at || "");
+    });
+    var news = scraps.filter(function (s) { return s.type === "issue"; });
+    var posts = scraps.filter(function (s) { return s.type === "post"; });
+
+    document.getElementById("scrap-empty").hidden = scraps.length > 0;
+    document.getElementById("scrap-news-sec").hidden = news.length === 0;
+    document.getElementById("scrap-posts-sec").hidden = posts.length === 0;
+    listEl.textContent = "";
+    postsEl.textContent = "";
+
+    news.forEach(function (s) {
+      var card = el("article", "rounded-xl border border-stone-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 p-5");
+      var top = el("div", "flex items-center justify-between text-xs");
+      top.appendChild(el("span", "font-semibold text-neutral-400", s.category || "뉴스"));
+      var rm = el("button", "text-amber-500 text-base", "★");
+      rm.title = "스크랩 해제";
+      rm.addEventListener("click", function () { toggleScrap(s); render(); });
+      top.appendChild(rm);
+      card.appendChild(top);
+      card.appendChild(el("h3", "fs-t mt-2 mb-1.5 font-bold text-[15px] leading-snug", s.label));
+      card.appendChild(el("p", "fs-p text-sm text-neutral-600 dark:text-neutral-300 mb-2", s.summary));
+      var ul = el("ul", "flex flex-col gap-1 border-t border-stone-200 dark:border-neutral-700 pt-2");
+      (s.headlines || []).forEach(function (h) {
+        var li = el("li");
+        var a = el("a", "block text-[13px] hover:text-blue-600", "");
+        a.href = h.link; a.target = "_blank"; a.rel = "noopener nofollow";
+        a.appendChild(el("b", "font-semibold text-neutral-400 text-xs mr-1.5", h.outlet));
+        a.appendChild(document.createTextNode(h.title));
+        li.appendChild(a);
+        ul.appendChild(li);
+      });
+      card.appendChild(ul);
+      listEl.appendChild(card);
+    });
+
+    posts.forEach(function (s) {
+      var li = el("li");
+      var row = el("div", "flex items-center gap-3 px-4 py-3");
+      var rm = el("button", "text-amber-500 shrink-0", "★");
+      rm.title = "스크랩 해제";
+      rm.addEventListener("click", function () { toggleScrap(s); render(); });
+      row.appendChild(rm);
+      var a = el("a", "flex-1 text-sm truncate hover:text-blue-600", s.title);
+      a.href = s.link; a.target = "_blank"; a.rel = "noopener nofollow";
+      row.appendChild(a);
+      row.appendChild(el("span", "text-[11px] rounded-full px-2 py-0.5 bg-stone-100 dark:bg-neutral-700 text-neutral-500 shrink-0", s.source));
+      li.appendChild(row);
+      postsEl.appendChild(li);
+    });
+  }
+
+  render();
+})();
+"""
+
+SERVICE_WORKER = """
+var CACHE = "goreun-v1";
+self.addEventListener("install", function (e) { self.skipWaiting(); });
+self.addEventListener("activate", function (e) { e.waitUntil(clients.claim()); });
+self.addEventListener("fetch", function (e) {
+  if (e.request.method !== "GET") return;
+  var url = new URL(e.request.url);
+  if (url.origin !== location.origin) return;
+  // 네트워크 우선, 실패 시 마지막 성공 캐시 제공 (오프라인 페일세이프)
+  e.respondWith(
+    fetch(e.request)
+      .then(function (resp) {
+        var copy = resp.clone();
+        caches.open(CACHE).then(function (c) { c.put(e.request, copy); });
+        return resp;
+      })
+      .catch(function () { return caches.match(e.request); })
+  );
+});
 """
 
 
@@ -174,7 +429,7 @@ def _tab(label: str, count: int, filter_key: str, value: str, selected: bool, do
 def _page(
     *, title: str, active: str, generated_at: str, feed: str,
     updated_label: str, head_extra: str, tabs_html: str, after_header: str,
-    main_html: str, footer_notes: list[str], site_stamp: str,
+    main_html: str, footer_notes: list[str], site_stamp: str, extra_script: str = "",
 ) -> str:
     nav = "".join(
         f'<a href="{href}" class="px-2 py-1 rounded-lg text-sm '
@@ -187,7 +442,13 @@ def _page(
         for key, label, href in (
             ("news", "뉴스", "index.html"),
             ("community", "커뮤니티", "community.html"),
+            ("scrapbook", "스크랩북", "scrapbook.html"),
         )
+    )
+    tabs_nav = (
+        f'<nav class="flex gap-2 overflow-x-auto no-scrollbar pb-3" aria-label="필터">{tabs_html}</nav>'
+        if tabs_html
+        else ""
     )
     notes = "".join(f'<p class="mb-2 max-w-[72ch]">{_esc(n)}</p>' for n in footer_notes)
     sentry = ""
@@ -211,17 +472,24 @@ def _page(
 <!-- AdSense 승인 후 사이트 확인/광고 스크립트를 여기에 붙여넣으세요 -->
 </head>
 <body class="bg-stone-50 dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 antialiased" style='font-family:"Pretendard Variable",Pretendard,-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Noto Sans KR","Malgun Gothic",sans-serif'>
-<header class="sticky top-0 z-20 border-b border-stone-200 dark:border-neutral-700 bg-stone-50/90 dark:bg-neutral-900/90 backdrop-blur">
+<div id="offline-banner" hidden class="bg-amber-100 dark:bg-amber-500/15 text-amber-800 dark:text-amber-300 text-xs text-center px-4 py-2">오프라인 상태이거나 최신 뉴스를 불러오지 못했습니다. 이전 뉴스를 보여줍니다.</div>
+<header id="site-header" class="sticky top-0 z-20 border-b border-stone-200 dark:border-neutral-700 bg-stone-50/90 dark:bg-neutral-900/90 backdrop-blur">
   <div class="max-w-6xl mx-auto px-5">
     <div class="flex items-center gap-2.5 py-3 flex-wrap">
-      {LOGO_MARK}
-      <span class="text-xl font-extrabold tracking-tight">{_esc(config.SITE_TITLE)}</span>
+      <a href="index.html" class="flex items-center gap-2.5 shrink-0" aria-label="고른뉴스 홈">
+        {LOGO_MARK}
+        <span class="text-xl font-extrabold tracking-tight">{_esc(config.SITE_TITLE)}</span>
+      </a>
       <span class="hidden md:inline text-xs text-neutral-500 dark:text-neutral-400">{_esc(config.SITE_TAGLINE)}</span>
       <nav class="flex gap-1 ml-2" aria-label="페이지">{nav}</nav>
       <span class="ml-auto text-xs text-neutral-500 dark:text-neutral-400 tabular-nums">{_esc(updated_label)}</span>
-      <button type="button" id="bug-report" class="rounded-full border border-stone-300 dark:border-neutral-600 bg-white dark:bg-neutral-800 px-3 py-1 text-xs text-neutral-500 dark:text-neutral-400 hover:text-blue-600 hover:border-blue-500 dark:hover:text-blue-400">버그 제보</button>
+      <span class="flex gap-1">
+        <button type="button" id="fs-down" title="글자 작게" class="rounded-full border border-stone-300 dark:border-neutral-600 bg-white dark:bg-neutral-800 px-2.5 py-1 text-xs text-neutral-500 dark:text-neutral-400 hover:text-blue-600 hover:border-blue-500">가</button>
+        <button type="button" id="fs-up" title="글자 크게" class="rounded-full border border-stone-300 dark:border-neutral-600 bg-white dark:bg-neutral-800 px-2.5 py-1 text-sm text-neutral-500 dark:text-neutral-400 hover:text-blue-600 hover:border-blue-500">가+</button>
+        <button type="button" id="bug-report" class="rounded-full border border-stone-300 dark:border-neutral-600 bg-white dark:bg-neutral-800 px-3 py-1 text-xs text-neutral-500 dark:text-neutral-400 hover:text-blue-600 hover:border-blue-500 dark:hover:text-blue-400">버그 제보</button>
+      </span>
     </div>
-    <nav class="flex gap-2 overflow-x-auto no-scrollbar pb-3" aria-label="필터">{tabs_html}</nav>
+    {tabs_nav}
   </div>
 </header>
 {after_header}
@@ -232,7 +500,9 @@ def _page(
     <p>{site_stamp}</p>
   </div>
 </footer>
+<button type="button" id="to-top" hidden aria-label="맨 위로" class="fixed bottom-6 right-5 z-40 w-11 h-11 rounded-full bg-neutral-900 text-stone-50 dark:bg-neutral-100 dark:text-neutral-900 shadow-lg text-lg">↑</button>
 <script>{BASE_SCRIPT}</script>
+{f"<script>{extra_script}</script>" if extra_script else ""}
 {sentry}
 </body>
 </html>"""
@@ -245,7 +515,7 @@ def _render_ticker(breaking: list[dict]) -> str:
     if not breaking:
         return ""
     items = "".join(
-        f'<a class="ticker-item absolute inset-0 flex items-center gap-2 opacity-0 truncate text-sm" '
+        f'<a class="ticker-item absolute inset-0 flex items-center gap-2 truncate text-sm" '
         f'href="{_esc(b["link"])}" target="_blank" rel="noopener nofollow">'
         f'<time class="text-red-600 dark:text-red-400 text-xs font-semibold tabular-nums shrink-0">{_esc(b["time"])}</time>'
         f'<span class="truncate">{_esc(b["title"])}</span>'
@@ -260,10 +530,42 @@ def _render_ticker(breaking: list[dict]) -> str:
 </div>"""
 
 
-def _render_issue(issue: dict) -> str:
+def _render_bias_bar(bias: dict | None) -> str:
+    if not bias:
+        return ""
+    total = sum(bias.values())
+    if total == 0:
+        return ""
+    segments, labels = [], []
+    for key, label in BIAS_LABELS:
+        n = bias.get(key, 0)
+        if n:
+            segments.append(
+                f'<span class="{BIAS_BAR_CLASSES[key]}" style="width:{n / total * 100:.0f}%"></span>'
+            )
+        labels.append(f"<span>{label} {n}</span>")
+    return f"""<div class="mb-2.5" aria-label="보도 매체 성향 분포">
+  <div class="flex h-1.5 rounded-full overflow-hidden bg-stone-200 dark:bg-neutral-700">{"".join(segments)}</div>
+  <div class="flex justify-between text-[10px] text-neutral-400 mt-1">{"".join(labels)}</div>
+</div>"""
+
+
+def _render_issue(issue: dict, index: int) -> str:
     heads = issue.get("headlines", [])
     color = CATEGORY_COLORS.get(issue["category"], "#2563eb")
     outlet_count = issue.get("outlet_count", len({h["outlet"] for h in heads}))
+    anchor = f"issue-{index}"
+    scrap_payload = _esc(json.dumps(
+        {
+            "id": f"issue:{issue['label']}",
+            "type": "issue",
+            "label": issue["label"],
+            "summary": issue["summary"],
+            "category": issue["category"],
+            "headlines": heads,
+        },
+        ensure_ascii=False,
+    ))
     rows = "".join(
         f'<li><a class="block text-[13px] hover:text-blue-600 dark:hover:text-blue-400" '
         f'href="{_esc(h["link"])}" target="_blank" rel="noopener nofollow">'
@@ -271,30 +573,49 @@ def _render_issue(issue: dict) -> str:
         f'{_esc(h["title"])}</a></li>'
         for h in heads
     )
-    return f"""<article class="rounded-xl border border-stone-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 p-5 border-t-[3px]" style="border-top-color:{color}" data-cat="{_esc(issue["category"])}">
+    return f"""<article id="{anchor}" class="rounded-xl border border-stone-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 p-5 border-t-[3px]" style="border-top-color:{color}" data-cat="{_esc(issue["category"])}">
   <div class="flex items-center justify-between text-xs">
     <span class="font-semibold rounded-full px-2.5 py-0.5" style="color:{color};background:{color}1f">{_esc(issue["category"])}</span>
-    <span class="text-neutral-400">{outlet_count}개 매체</span>
+    <span class="flex items-center gap-2">
+      <span class="text-neutral-400">{outlet_count}개 매체</span>
+      <button type="button" class="scrap-btn text-base leading-none text-neutral-300 dark:text-neutral-600 hover:text-amber-500" aria-label="스크랩" data-scrap="{scrap_payload}">☆</button>
+    </span>
   </div>
-  <h3 class="mt-2.5 mb-1.5 font-bold text-[15px] leading-snug [text-wrap:balance]">{_esc(issue["label"])}</h3>
-  <p class="text-sm text-neutral-600 dark:text-neutral-300 mb-3.5">{_esc(issue["summary"])}</p>
-  <details class="border-t border-stone-200 dark:border-neutral-700 pt-3">
-    <summary class="list-none [&::-webkit-details-marker]:hidden cursor-pointer select-none inline-flex items-center gap-1.5 rounded-lg border border-stone-200 dark:border-neutral-600 px-3 py-1.5 text-xs font-medium text-blue-600 dark:text-blue-400 hover:bg-stone-100 dark:hover:bg-neutral-700">
-      매체별 헤드라인 {len(heads)}건 <span class="tri">▾</span>
-    </summary>
-    <ul class="mt-2.5 flex flex-col gap-1.5">{rows}</ul>
-  </details>
+  <h3 class="fs-t mt-2.5 mb-1.5 font-bold text-[15px] leading-snug [text-wrap:balance]">{_esc(issue["label"])}</h3>
+  <p class="fs-p text-sm text-neutral-600 dark:text-neutral-300 mb-3.5">{_esc(issue["summary"])}</p>
+  <div class="flex items-center gap-2 border-t border-stone-200 dark:border-neutral-700 pt-3">
+    <details class="flex-1">
+      <summary class="list-none [&::-webkit-details-marker]:hidden cursor-pointer select-none inline-flex items-center gap-1.5 rounded-lg border border-stone-200 dark:border-neutral-600 px-3 py-1.5 text-xs font-medium text-blue-600 dark:text-blue-400 hover:bg-stone-100 dark:hover:bg-neutral-700">
+        매체별 헤드라인 {len(heads)}건 <span class="tri">▾</span>
+      </summary>
+      <div class="mt-3">{_render_bias_bar(issue.get("bias"))}</div>
+      <ul class="flex flex-col gap-1.5">{rows}</ul>
+    </details>
+    <button type="button" class="share-btn shrink-0 self-start rounded-lg border border-stone-200 dark:border-neutral-600 px-3 py-1.5 text-xs text-neutral-500 dark:text-neutral-400 hover:text-blue-600 hover:border-blue-500" data-anchor="{anchor}" data-title="{_esc(issue["label"])}" data-text="{_esc(issue["summary"])}">공유하기</button>
+  </div>
 </article>"""
 
 
 def _render_sidebar(policy: list[dict]) -> str:
     items = "".join(
-        f"""<div class="border-t border-stone-200 dark:border-neutral-700 py-3 first:border-0 first:pt-0 last:pb-0">
-  <h3 class="text-[13px] font-semibold mb-1"><a class="hover:text-blue-600 dark:hover:text-blue-400" href="{_esc(p["link"])}" target="_blank" rel="noopener">{_esc(p["title"])}</a></h3>
-  <p class="text-xs text-neutral-500 dark:text-neutral-400">{_esc(p["summary"])}</p>
+        f"""<div class="policy-item border-t border-stone-200 dark:border-neutral-700 py-3 first:border-0 first:pt-0 last:pb-0">
+  <div class="flex items-center justify-between gap-2 mb-1">
+    <h3 class="fs-t text-[13px] font-semibold"><a class="hover:text-blue-600 dark:hover:text-blue-400" href="{_esc(p["link"])}" target="_blank" rel="noopener">{_esc(p["title"])}</a></h3>
+    <span class="read-time text-[10px] text-neutral-400 shrink-0"></span>
+  </div>
+  <p class="policy-text fs-p text-xs text-neutral-500 dark:text-neutral-400">{_esc(p["summary"])}</p>
 </div>"""
         for p in policy
     )
+    newsletter_form = f"""<section class="rounded-xl border border-stone-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 p-5">
+    <h2 class="text-sm font-bold mb-0.5">뉴스레터</h2>
+    <p class="text-[11px] text-neutral-400 mb-3">매일 아침 7시, 요약된 뉴스를 메일로 받아보세요</p>
+    <form id="newsletter" class="flex gap-2" data-action="{_esc(config.NEWSLETTER_FORM_ACTION)}" data-entry="{_esc(config.NEWSLETTER_FORM_ENTRY)}">
+      <input type="email" required placeholder="you@example.com" class="min-w-0 flex-1 rounded-lg border border-stone-300 dark:border-neutral-600 bg-stone-50 dark:bg-neutral-900 px-3 py-1.5 text-sm placeholder:text-neutral-400 focus:outline-none focus:border-blue-500">
+      <button type="submit" class="shrink-0 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-3.5 py-1.5">구독</button>
+    </form>
+    <p id="newsletter-done" hidden class="text-sm font-medium text-emerald-600 dark:text-emerald-400">구독이 완료되었습니다!</p>
+  </section>"""
     return f"""<aside class="flex flex-col gap-5">
   <section class="rounded-xl border border-stone-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 p-5">
     <h2 class="text-sm font-bold mb-0.5">정책 브리핑</h2>
@@ -302,6 +623,7 @@ def _render_sidebar(policy: list[dict]) -> str:
     {items}
   </section>
   {AD_SLOT}
+  {newsletter_form}
   <section class="rounded-xl border border-stone-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 p-5">
     <h2 class="text-sm font-bold mb-0.5">공개 API</h2>
     <p class="text-[11px] text-neutral-400 mb-2.5">이 페이지의 모든 데이터는 JSON으로도 제공됩니다 (매시간 갱신).</p>
@@ -318,7 +640,7 @@ def build(briefing: dict, community: list[dict], out_dir: Path) -> Path:
     punycode_domain = config.SITE_DOMAIN.encode("idna").decode()
     og_url = ""
     if build_og(briefing, out_dir / "og.png", now):
-        og_url = f"http://{punycode_domain}/og.png"
+        og_url = f"https://{punycode_domain}/og.png"
     og_meta = f"""<meta property="og:type" content="website">
 <meta property="og:title" content="{_esc(config.SITE_TITLE)} — {_esc(config.SITE_TAGLINE)}">
 <meta property="og:description" content="여러 언론사의 헤드라인을 교차 확인해 매시간 정리하는 중립 뉴스 브리핑">
@@ -343,7 +665,7 @@ def build(briefing: dict, community: list[dict], out_dir: Path) -> Path:
 
     cards = []
     for i, issue in enumerate(issues):
-        cards.append(_render_issue(issue))
+        cards.append(_render_issue(issue, i))
         if i == 5:
             cards.append(f'<div class="sm:col-span-2">{AD_SLOT}</div>')
 
@@ -352,22 +674,30 @@ def build(briefing: dict, community: list[dict], out_dir: Path) -> Path:
   {_render_sidebar(briefing.get("policy", []))}
 </div>"""
 
+    stamp = (
+        f"ⓒ {_esc(config.SITE_TITLE)} ({_esc(config.SITE_DOMAIN)}) · "
+        f"생성 시각 {now.strftime('%Y-%m-%d %H:%M KST')}"
+    )
+    updated = f"{now.strftime('%m월 %d일 %H:%M')} 업데이트 · 매시간 갱신"
+
     page = _page(
         title=f"{config.SITE_TITLE} — {config.SITE_TAGLINE}",
         active="news",
         generated_at=generated_at,
         feed="briefing.json",
-        updated_label=f"{now.strftime('%m월 %d일 %H:%M')} 업데이트 · 매시간 갱신",
+        updated_label=updated,
         head_extra=og_meta,
         tabs_html="".join(tabs),
         after_header=_render_ticker(briefing.get("breaking", [])),
         main_html=main_html,
         footer_notes=[DISCLAIMER, KOGL_NOTICE],
-        site_stamp=f"ⓒ {_esc(config.SITE_TITLE)} ({_esc(config.SITE_DOMAIN)}) · 생성 시각 {now.strftime('%Y-%m-%d %H:%M KST')}",
+        site_stamp=stamp,
     )
     (out_dir / "index.html").write_text(page, encoding="utf-8")
+    (out_dir / "sw.js").write_text(SERVICE_WORKER, encoding="utf-8")
 
-    build_community_page(community, out_dir, generated_at, now)
+    build_community_page(community, out_dir, generated_at, now, updated, stamp)
+    build_scrapbook_page(out_dir, generated_at, now, updated, stamp)
     return out_dir / "index.html"
 
 
@@ -375,7 +705,8 @@ def build(briefing: dict, community: list[dict], out_dir: Path) -> Path:
 
 
 def build_community_page(
-    posts: list[dict], out_dir: Path, generated_at: str, now: datetime
+    posts: list[dict], out_dir: Path, generated_at: str,
+    now: datetime, updated: str, stamp: str,
 ) -> Path:
     counts: dict[str, int] = {}
     for post in posts:
@@ -385,19 +716,37 @@ def build_community_page(
         _tab(src, n, "src", src, False) for src, n in counts.items()
     ]
 
-    rows = "".join(
-        f"""<li data-src="{_esc(p["source"])}">
-  <a class="flex items-center gap-3 px-4 py-3 hover:bg-stone-50 dark:hover:bg-neutral-700/40" href="{_esc(p["link"])}" target="_blank" rel="noopener nofollow">
+    rows = []
+    for i, p in enumerate(posts):
+        hot = p.get("hot")
+        hot_badge = (
+            '<span class="text-[10px] font-bold text-red-500 shrink-0">🔥 HOT</span>'
+            if hot
+            else ""
+        )
+        row_bg = " bg-amber-50 dark:bg-amber-500/10" if hot else ""
+        scrap_payload = _esc(json.dumps(
+            {
+                "id": f"post:{p['link']}",
+                "type": "post",
+                "title": p["title"],
+                "source": p["source"],
+                "link": p["link"],
+            },
+            ensure_ascii=False,
+        ))
+        rows.append(f"""<li data-src="{_esc(p["source"])}">
+  <div class="flex items-center gap-3 px-4 py-3 hover:bg-stone-50 dark:hover:bg-neutral-700/40{row_bg}">
     <span class="w-6 text-right text-sm font-bold text-neutral-300 dark:text-neutral-600 tabular-nums shrink-0">{i + 1}</span>
-    <span class="flex-1 text-sm truncate">{_esc(p["title"])}</span>
+    <a class="flex-1 min-w-0 text-sm truncate hover:text-blue-600 dark:hover:text-blue-400" href="{_esc(p["link"])}" target="_blank" rel="noopener nofollow">{_esc(p["title"])}</a>
+    {hot_badge}
     <span class="text-[11px] rounded-full px-2 py-0.5 bg-stone-100 dark:bg-neutral-700 text-neutral-500 dark:text-neutral-400 shrink-0">{_esc(p["source"])}</span>
-  </a>
-</li>"""
-        for i, p in enumerate(posts)
-    )
+    <button type="button" class="scrap-btn text-base leading-none text-neutral-300 dark:text-neutral-600 hover:text-amber-500 shrink-0" aria-label="스크랩" data-scrap="{scrap_payload}">☆</button>
+  </div>
+</li>""")
 
     main_html = f"""<div class="max-w-3xl mx-auto py-6 flex flex-col gap-5">
-  <ol class="rounded-xl border border-stone-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 divide-y divide-stone-200 dark:divide-neutral-700 overflow-hidden">{rows}</ol>
+  <ol class="rounded-xl border border-stone-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 divide-y divide-stone-200 dark:divide-neutral-700 overflow-hidden">{"".join(rows)}</ol>
   {AD_SLOT}
 </div>"""
 
@@ -406,14 +755,51 @@ def build_community_page(
         active="community",
         generated_at=generated_at,
         feed="community.json",
-        updated_label=f"{now.strftime('%m월 %d일 %H:%M')} 업데이트 · 매시간 갱신",
+        updated_label=updated,
         head_extra="",
         tabs_html="".join(tabs),
         after_header="",
         main_html=main_html,
         footer_notes=[COMMUNITY_NOTICE],
-        site_stamp=f"ⓒ {_esc(config.SITE_TITLE)} ({_esc(config.SITE_DOMAIN)}) · 생성 시각 {now.strftime('%Y-%m-%d %H:%M KST')}",
+        site_stamp=stamp,
     )
     out_path = out_dir / "community.html"
+    out_path.write_text(page, encoding="utf-8")
+    return out_path
+
+
+# ── 스크랩북 페이지 (클라이언트 렌더링) ─────────────────────────────────
+
+
+def build_scrapbook_page(
+    out_dir: Path, generated_at: str, now: datetime, updated: str, stamp: str
+) -> Path:
+    main_html = """<div class="max-w-3xl mx-auto py-6 flex flex-col gap-6">
+  <div id="scrap-empty" hidden class="text-center text-sm text-neutral-400 py-16">아직 스크랩한 글이 없습니다.<br>뉴스 카드나 커뮤니티 글의 ☆를 눌러 저장해 보세요.</div>
+  <section id="scrap-news-sec" hidden>
+    <h2 class="text-sm font-bold mb-3">뉴스</h2>
+    <div id="scrap-news" class="grid sm:grid-cols-2 gap-4"></div>
+  </section>
+  <section id="scrap-posts-sec" hidden>
+    <h2 class="text-sm font-bold mb-3">커뮤니티</h2>
+    <ol id="scrap-posts" class="rounded-xl border border-stone-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 divide-y divide-stone-200 dark:divide-neutral-700 overflow-hidden"></ol>
+  </section>
+</div>"""
+
+    page = _page(
+        title=f"스크랩북 — {config.SITE_TITLE}",
+        active="scrapbook",
+        generated_at=generated_at,
+        feed="",
+        updated_label=updated,
+        head_extra="",
+        tabs_html="",
+        after_header="",
+        main_html=main_html,
+        footer_notes=["스크랩한 글은 이 브라우저의 로컬 저장소(localStorage)에만 저장됩니다."],
+        site_stamp=stamp,
+        extra_script=SCRAPBOOK_SCRIPT,
+    )
+    out_path = out_dir / "scrapbook.html"
     out_path.write_text(page, encoding="utf-8")
     return out_path

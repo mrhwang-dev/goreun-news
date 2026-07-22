@@ -13,15 +13,23 @@
 from __future__ import annotations
 
 import html
+import json
 import re
 import time
 import urllib.request
+from pathlib import Path
 
 UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
 
 POSTS_PER_SOURCE = 12
 
 NOTICE_MARKERS = ("공지", "필독", "📢", "🚨", "이벤트 안내", "이용 규칙", "◤")
+
+# 🔥 HOT 판정: 키워드 포함 또는 최근 1시간 내 처음 목격된 '초신성' 게시물
+HOT_KEYWORDS = ("단독", "후기", "레전드", "속보", "충격", "최초")
+SEEN_PATH = Path(__file__).resolve().parent / "data" / "community_seen.json"
+SEEN_TTL_SECONDS = 48 * 3600
+NEW_POST_WINDOW_SECONDS = 3600
 
 
 def _get(url: str) -> str:
@@ -70,8 +78,20 @@ SOURCES = [
 ]
 
 
+def _load_seen() -> dict[str, float]:
+    try:
+        return json.loads(SEEN_PATH.read_text(encoding="utf-8"))
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+
+
 def fetch_community() -> list[dict]:
-    """소스별 인기글을 모아 [{source, title, link}] 목록으로 반환한다."""
+    """소스별 인기글을 모아 [{source, title, link, hot}] 목록으로 반환한다."""
+    now = time.time()
+    prev_seen = _load_seen()
+    first_run = not prev_seen  # 최초 실행에는 '초신성' 판정을 하지 않는다
+    seen_out = {k: v for k, v in prev_seen.items() if now - v < SEEN_TTL_SECONDS}
+
     all_posts: list[dict] = []
     for source in SOURCES:
         try:
@@ -80,16 +100,22 @@ def fetch_community() -> list[dict]:
         except Exception as e:  # 개별 소스 장애가 전체를 막지 않도록
             print(f"[경고] {source['name']} 인기글 수집 실패: {e}")
             continue
-        seen: set[str] = set()
+        dedupe: set[str] = set()
         count = 0
         for post in posts:
-            if post["link"] in seen:
+            if post["link"] in dedupe:
                 continue
-            seen.add(post["link"])
-            all_posts.append({"source": source["name"], **post})
+            dedupe.add(post["link"])
+            first_ts = seen_out.setdefault(post["link"], now)
+            is_supernova = (not first_run) and (now - first_ts < NEW_POST_WINDOW_SECONDS)
+            hot = is_supernova or any(k in post["title"] for k in HOT_KEYWORDS)
+            all_posts.append({"source": source["name"], "hot": hot, **post})
             count += 1
             if count >= POSTS_PER_SOURCE:
                 break
         print(f"[커뮤니티] {source['name']} 인기글 {count}건")
         time.sleep(0.3)
+
+    SEEN_PATH.parent.mkdir(parents=True, exist_ok=True)
+    SEEN_PATH.write_text(json.dumps(seen_out), encoding="utf-8")
     return all_posts

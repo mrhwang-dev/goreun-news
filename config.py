@@ -34,6 +34,22 @@ MAX_HEADLINES_PER_ISSUE = 6
 # 이슈 분류 카테고리 (AI가 이 중 하나를 지정)
 ISSUE_CATEGORIES = ["정치", "경제", "사회", "국제", "IT·과학", "생활·문화"]
 
+# 매체 성향 분류 — 이슈 카드의 성향 스펙트럼 바에 사용.
+# 언론학계·언론재단 조사 등에서 통용되는 일반적 분류를 따르며 필요 시 조정한다.
+OUTLET_BIAS = {
+    "조선일보": "conservative",
+    "동아일보": "conservative",
+    "세계일보": "conservative",
+    "경향신문": "progressive",
+    "한국경제": "moderate",
+}
+
+# 뉴스레터 구독 폼 (구글 폼 연동). 폼 생성 후 두 값을 채우면 실제 제출된다.
+# ACTION 예: https://docs.google.com/forms/d/e/<FORM_ID>/formResponse
+# ENTRY  예: entry.123456789  (이메일 질문 항목의 필드명)
+NEWSLETTER_FORM_ACTION = os.environ.get("NEWSLETTER_FORM_ACTION", "")
+NEWSLETTER_FORM_ENTRY = os.environ.get("NEWSLETTER_FORM_ENTRY", "")
+
 # ── 모델/사이트 ─────────────────────────────────────────────────────────
 # 비용을 줄이려면 BRIEFING_MODEL=claude-haiku-4-5 로 변경.
 # or 사용: CI에서 빈 문자열로 주입돼도 기본값이 적용되도록

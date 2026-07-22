@@ -78,10 +78,15 @@ def build_briefing() -> dict:
         meta = labels.get(ci)
         if not meta:
             continue
+        outlets = {m["outlet"] for m in cluster}
+        bias = {"progressive": 0, "moderate": 0, "conservative": 0}
+        for outlet in outlets:
+            bias[config.OUTLET_BIAS.get(outlet, "moderate")] += 1
         issues_all.append(
             {
                 **meta,
-                "outlet_count": len({m["outlet"] for m in cluster}),
+                "outlet_count": len(outlets),
+                "bias": bias,
                 "latest_ts": max(m["ts"] for m in cluster),
                 "headlines": [
                     {"outlet": m["outlet"], "title": m["title"], "link": m["link"]}

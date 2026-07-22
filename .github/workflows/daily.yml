@@ -28,7 +28,9 @@ jobs:
       # AI 요약 캐시 — 변화 없는 클러스터는 재호출하지 않아 시간당 비용 최소화
       - uses: actions/cache@v4
         with:
-          path: data/cache.json
+          path: |
+            data/cache.json
+            data/community_seen.json
           key: briefing-cache-${{ github.run_id }}
           restore-keys: briefing-cache-
       - name: Generate briefing
@@ -36,6 +38,8 @@ jobs:
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           BRIEFING_MODEL: ${{ vars.BRIEFING_MODEL }}
+          NEWSLETTER_FORM_ACTION: ${{ vars.NEWSLETTER_FORM_ACTION }}
+          NEWSLETTER_FORM_ENTRY: ${{ vars.NEWSLETTER_FORM_ENTRY }}
       - uses: actions/upload-pages-artifact@v3
         with:
           path: site
