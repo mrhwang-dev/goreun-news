@@ -315,7 +315,30 @@
     "progressive_missing": [
       {
         "label": "정부, 지방 의료 인력 지원 대책 발표 (예시)",
+        "summary": "정부가 지방 의료 인력 확충 대책을 발표했다. ※ 예시",
         "outlet_count": 2,
+        "bias": {
+          "progressive": 0,
+          "moderate": 0,
+          "conservative": 2,
+          "unknown": 0
+        },
+        "headlines": [
+          {
+            "outlet": "동아일보",
+            "title": "지방 의료인력 지원 대책 발표 (예시)",
+            "link": "https://www.donga.com/",
+            "time": "07:12",
+            "bias": "conservative"
+          },
+          {
+            "outlet": "세계일보",
+            "title": "지역 의료 공백 메운다…정부 대책 (예시)",
+            "link": "https://www.segye.com/",
+            "time": "07:48",
+            "bias": "conservative"
+          }
+        ],
         "link": "https://www.donga.com/",
         "issue_index": 3
       }
@@ -323,7 +346,23 @@
     "conservative_missing": [
       {
         "label": "노동계, 최저임금 재심의 요구 (예시)",
+        "summary": "노동계가 최저임금 재심의를 요구했다. ※ 예시",
         "outlet_count": 2,
+        "bias": {
+          "progressive": 2,
+          "moderate": 0,
+          "conservative": 0,
+          "unknown": 0
+        },
+        "headlines": [
+          {
+            "outlet": "경향신문",
+            "title": "노동계 최저임금 재심의 요구 (예시)",
+            "link": "https://www.khan.co.kr/",
+            "time": "08:00",
+            "bias": "progressive"
+          }
+        ],
         "link": "https://www.khan.co.kr/",
         "issue_index": null
       }

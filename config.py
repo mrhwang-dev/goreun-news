@@ -35,6 +35,17 @@ PRESS_FEEDS = [
     {"outlet": "미디어오늘", "url": "http://www.mediatoday.co.kr/rss/allArticle.xml"},
     {"outlet": "시사인", "url": "https://www.sisain.co.kr/rss/allArticle.xml"},
     {"outlet": "시사저널", "url": "http://www.sisajournal.com/rss/allArticle.xml"},
+    # 인터넷 언론 (2026-07-22 검증)
+    {"outlet": "폴리뉴스", "url": "https://www.polinews.co.kr/rss/allArticle.xml"},
+    {"outlet": "뉴스프리존", "url": "https://www.newsfreezone.co.kr/rss/allArticle.xml"},
+    {"outlet": "시사위크", "url": "https://www.sisaweek.com/rss/allArticle.xml"},
+    {"outlet": "투데이신문", "url": "https://www.ntoday.co.kr/rss/allArticle.xml"},
+    {"outlet": "천지일보", "url": "https://www.newscj.com/rss/allArticle.xml"},
+    {"outlet": "여성신문", "url": "https://www.womennews.co.kr/rss/allArticle.xml"},
+    {"outlet": "데일리임팩트", "url": "https://www.dailyimpact.co.kr/rss/allArticle.xml"},
+    {"outlet": "그린포스트코리아", "url": "https://www.greenpostkorea.co.kr/rss/allArticle.xml"},
+    {"outlet": "법률방송뉴스", "url": "https://www.ltn.kr/rss/allArticle.xml"},
+    {"outlet": "코리아IT타임스", "url": "https://www.koreaittimes.com/rss/allArticle.xml"},
     # 지역지
     {"outlet": "경남신문", "url": "http://www.knnews.co.kr/rss/rss.php"},
     {"outlet": "경북일보", "url": "https://www.kyongbuk.co.kr/rss/allArticle.xml"},
@@ -89,6 +100,7 @@ OUTLET_BIAS = {
     "오마이뉴스": "progressive",
     "시사인": "progressive",
     "미디어오늘": "progressive",
+    "뉴스프리존": "progressive",
     # 나머지(경제지·통신·IT·지역지)는 기본값 moderate 처리
     "한국경제": "moderate",
 }

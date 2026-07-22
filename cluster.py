@@ -244,13 +244,66 @@ _FRAME_STOPWORDS = {
 }
 
 _QUOTE_RE = re.compile(r"[“\"'‘]([^”\"'’]{2,20})[”\"'’]")
-_TOKEN_RE = re.compile(r"[가-힣A-Za-z0-9]{2,}")
+# 한자(李·尹 등 성씨 표기)도 토큰에 포함 — 국내 제목 특유의 호칭 프레임 신호
+_TOKEN_RE = re.compile(r"[一-龥가-힣A-Za-z0-9]{2,}")
+
+# 조사·어미 정규화: 말미의 조사/흔한 어미를 벗겨 어근으로 병합한다.
+# ("동결했다"와 "동결 결정"의 '동결'이 같은 후보로 잡히도록)
+# 긴 접미사부터 검사하고, 벗긴 뒤 어근이 2자 미만이면 벗기지 않는다.
+_SUFFIXES = sorted(
+    [
+        # 조사
+        "에서", "으로", "라며", "라고", "부터", "까지", "에게", "께서", "마저", "조차",
+        "을", "를", "이", "가", "은", "는", "에", "로", "와", "과", "도", "만", "의",
+        # 어미
+        "했다며", "했다는", "합니다", "했다", "한다", "됐다", "된다", "하다", "하는",
+        "했고", "하며", "하고", "해야", "될까", "할까",
+    ],
+    key=len,
+    reverse=True,
+)
+
+
+def stem_token(token: str) -> str:
+    """규칙 기반 어근 추출. 형태소 분석기 없이 조사·어미만 벗긴다."""
+    for suffix in _SUFFIXES:
+        if token.endswith(suffix) and len(token) - len(suffix) >= 2:
+            return token[: -len(suffix)]
+    return token
 
 
 def _frame_tokens(title: str) -> set[str]:
-    tokens = {t for t in _TOKEN_RE.findall(title) if t not in _FRAME_STOPWORDS}
+    tokens = {
+        stem_token(t)
+        for t in _TOKEN_RE.findall(title)
+        if stem_token(t) not in _FRAME_STOPWORDS
+    }
     tokens.update(q.strip() for q in _QUOTE_RE.findall(title) if len(q.strip()) >= 2)
     return tokens
+
+
+# 호칭 프레임: 같은 인물을 어떤 표기로 부르는가 (국내 특유의 강력한 신호)
+_HONORIFIC_PATTERNS = [
+    ("한자 성+직함", re.compile(r"[一-龥]\s?(?:대통령|대표|시장|지사|총리|장관)")),
+    ("이름+직함", re.compile(r"[가-힣]{3}\s(?:대통령|대표|시장|지사|총리|장관)")),
+]
+
+
+def detect_honorifics(headlines: list[dict]) -> list[dict]:
+    """제목에서 호칭 표기 변형과 사용 진영을 감지한다.
+
+    반환: [{"style": "한자 성+직함", "text": "李대통령", "sides": {"conservative": 2, ...}}]
+    같은 인물에 대한 표기가 2종 이상일 때만 프레임 신호로 의미가 있다.
+    """
+    found: dict[str, dict] = {}
+    for h in headlines:
+        side = h.get("bias", "unknown")
+        for style, pattern in _HONORIFIC_PATTERNS:
+            for m in pattern.findall(h["title"]) if False else pattern.finditer(h["title"]):
+                text = m.group(0)
+                rec = found.setdefault(text, {"style": style, "text": text, "sides": {}})
+                rec["sides"][side] = rec["sides"].get(side, 0) + 1
+    return list(found.values())
 
 
 def extract_frame_candidates(headlines: list[dict]) -> dict[str, list[str]]:

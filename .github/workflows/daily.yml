@@ -40,8 +40,10 @@ jobs:
             data/community_seen.json
           key: briefing-cache-${{ github.run_id }}
           restore-keys: briefing-cache-
-      - name: Unit tests (cluster.py)
-        run: python tests/test_cluster.py
+      - name: Unit tests (cluster·framing)
+        run: |
+          python tests/test_cluster.py
+          python tests/test_framing.py
       - name: Generate briefing
         run: python run.py
         env:

@@ -253,6 +253,13 @@ def label_clusters(clusters: list[list[dict]]) -> dict[int, dict]:
 
 BIAS_KO = {"progressive": "진보", "moderate": "중도", "conservative": "보수", "unknown": "분류 없음"}
 
+# 품질 게이트: note가 매체를 '심판'하는 평가어를 쓰면 해당 framing을 폐기한다
+_EVAL_BLACKLIST = ("교묘", "노골", "왜곡", "편파", "선동", "물타기", "궤변", "저열", "악의")
+
+
+def framing_passes_gate(note: str) -> bool:
+    return not any(word in note for word in _EVAL_BLACKLIST)
+
 
 def refine_top_issues(issues: list[dict], top_n: int | None = None) -> None:
     """점수 상위 이슈의 label/summary를 Claude 정밀 리포트로 교체한다 (in-place)."""
@@ -278,7 +285,7 @@ def refine_top_issues(issues: list[dict], top_n: int | None = None) -> None:
     if not to_ask:
         return
 
-    from cluster import extract_frame_candidates
+    from cluster import detect_honorifics, extract_frame_candidates
 
     blocks = []
     for i in to_ask:
@@ -295,9 +302,18 @@ def refine_top_issues(issues: list[dict], top_n: int | None = None) -> None:
             f"진보만={', '.join(cands['progressive']) or '없음'} / "
             f"보수만={', '.join(cands['conservative']) or '없음'}"
         )
+        honorifics = detect_honorifics(issue["headlines"])
+        hono_line = ""
+        if len(honorifics) >= 2:  # 표기가 2종 이상일 때만 프레임 신호
+            hono_line = "호칭 표기(알고리즘 감지): " + ", ".join(
+                f"{h['text']}({h['style']}: "
+                + "·".join(f"{BIAS_KO.get(s, s)} {n}" for s, n in h["sides"].items())
+                + ")"
+                for h in honorifics
+            ) + "\n"
         blocks.append(
             f"[{i}] 매체 성향 분포: {bias_line or '정보 없음'}\n"
-            f"프레임 후보(알고리즘 산출): {cand_line}\n{heads}"
+            f"프레임 후보(알고리즘 산출): {cand_line}\n{hono_line}{heads}"
         )
     user = (
         "다음 상위 핫이슈들의 최종 중립 리포트를 작성하라. "
@@ -321,11 +337,18 @@ def refine_top_issues(issues: list[dict], top_n: int | None = None) -> None:
         targets[i]["summary"] = entry["summary"]
         framing = entry.get("framing")
         if framing and framing.get("note"):
+            if not framing_passes_gate(framing["note"]):
+                print(f"[품질 게이트] 평가어 감지 — framing 폐기: {framing['note'][:50]}")
+                framing = None
+        if framing and framing.get("note"):
             # 사후 검증: 제목 원문에 실제로 존재하는 단어만 남긴다 (환각 차단)
             titles = " || ".join(h["title"] for h in targets[i]["headlines"])
+            proposed = framing.get("words") or []
             framing["words"] = [
-                w for w in (framing.get("words") or []) if w.get("word") and w["word"] in titles
+                w for w in proposed if w.get("word") and w["word"] in titles
             ][:4]
+            if proposed:
+                print(f"[프레임 적중률] {len(framing['words'])}/{len(proposed)}")
             targets[i]["framing"] = framing
         cache["refined"][keys[i]] = {
             "label": targets[i]["label"],

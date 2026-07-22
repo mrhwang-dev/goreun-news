@@ -168,7 +168,10 @@ def build_briefing() -> dict:
     def _blindspot_entry(issue):
         return {
             "label": issue["label"],
+            "summary": issue["summary"],
             "outlet_count": issue["outlet_count"],
+            "bias": issue["bias"],
+            "headlines": issue["headlines"][:3],
             "link": issue["headlines"][0]["link"] if issue["headlines"] else "",
             "issue_index": label_to_idx.get(issue["label"]),
         }
@@ -179,7 +182,7 @@ def build_briefing() -> dict:
             if i["bias"].get(side_a, 0) >= 2 and i["bias"].get(side_b, 0) == 0
         ]
         found.sort(key=lambda i: i["outlet_count"], reverse=True)
-        return [_blindspot_entry(i) for i in found[:4]]
+        return [_blindspot_entry(i) for i in found[:12]]
 
     blindspot = {
         # 진보 매체가 다루지 않은(보수만 보도) 이슈 / 그 반대

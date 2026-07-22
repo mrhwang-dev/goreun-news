@@ -150,7 +150,7 @@ def fetch_community() -> list[dict]:
     first_run = not prev_seen  # 최초 실행에는 '초신성' 판정을 하지 않는다
     seen_out = {k: v for k, v in prev_seen.items() if now - v.get("t", 0) < SEEN_TTL_SECONDS}
 
-    all_posts: list[dict] = []
+    per_source: list[list[dict]] = []
     for source in SOURCES:
         try:
             page = _get(source["url"])
@@ -159,7 +159,7 @@ def fetch_community() -> list[dict]:
             print(f"[경고] {source['name']} 인기글 수집 실패: {e}")
             continue
         dedupe: set[str] = set()
-        count = 0
+        bucket: list[dict] = []
         for post in posts:
             if post["link"] in dedupe:
                 continue
@@ -167,12 +167,19 @@ def fetch_community() -> list[dict]:
             rec = seen_out.setdefault(post["link"], {"t": now, "thumb": None, "checked": False})
             is_supernova = (not first_run) and (now - rec["t"] < NEW_POST_WINDOW_SECONDS)
             hot = is_supernova or any(k in post["title"] for k in HOT_KEYWORDS)
-            all_posts.append({"source": source["name"], "hot": hot, **post})
-            count += 1
-            if count >= POSTS_PER_SOURCE:
+            bucket.append({"source": source["name"], "hot": hot, **post})
+            if len(bucket) >= POSTS_PER_SOURCE:
                 break
-        print(f"[커뮤니티] {source['name']} 인기글 {count}건")
+        print(f"[커뮤니티] {source['name']} 인기글 {len(bucket)}건")
+        per_source.append(bucket)
         time.sleep(0.3)
+
+    # 소스별 블록 나열 대신 순위 교차(라운드로빈) — 각 커뮤니티 1위들이 먼저 온다
+    all_posts: list[dict] = []
+    for rank in range(POSTS_PER_SOURCE):
+        for bucket in per_source:
+            if rank < len(bucket):
+                all_posts.append(bucket[rank])
 
     # 썸네일: 신규 글만 og:image 1회 조회 (핫링크 표시용 URL만 저장, 이미지 미복제)
     budget = THUMB_FETCH_BUDGET

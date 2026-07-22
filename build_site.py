@@ -876,6 +876,33 @@ def _favicon(link: str) -> str:
     )
 
 
+FRAME_COLORS = {"progressive": "#3b82f6", "conservative": "#ef4444", "moderate": "#9ca3af", "common": "#b45309"}
+
+
+def _highlight_title(title: str, frame_words: list[dict]) -> str:
+    """제목 속 프레임 단어를 성향 색으로 하이라이트.
+
+    2단계 치환: 긴 단어부터 플레이스홀더로 치환한 뒤 마크업으로 복원 —
+    "규제"와 "규제 실패"가 함께 있을 때 mark 태그가 중첩되는 것을 방지.
+    """
+    out = _esc(title)
+    placeholders: dict[str, str] = {}
+    ordered = sorted(frame_words, key=lambda w: -len(w.get("word", "")))
+    for idx, w in enumerate(ordered):
+        token = _esc(w.get("word", ""))
+        if not token or token not in out:
+            continue
+        color = FRAME_COLORS.get(w.get("side"), "#b45309")
+        placeholder = f"\x00F{idx}\x00"
+        placeholders[placeholder] = (
+            f'<mark style="background:transparent;color:{color};font-weight:700">{token}</mark>'
+        )
+        out = out.replace(token, placeholder)
+    for placeholder, markup in placeholders.items():
+        out = out.replace(placeholder, markup)
+    return out
+
+
 def _tab(label: str, count: int, filter_key: str, value: str, selected: bool, dot: str = "") -> str:
     sel = "true" if selected else "false"
     return (
@@ -906,6 +933,8 @@ def _page(
         + f'">{label}</a>'
         for key, label, href in (
             ("news", "뉴스", "index.html"),
+            ("blindspot", "블라인드스팟", "blindspot.html"),
+            ("frame", "프레임", "frame.html"),
             ("community", "커뮤니티", "community.html"),
             ("scrapbook", "스크랩북", "scrapbook.html"),
         )
@@ -947,7 +976,7 @@ def _page(
         <span class="text-xl font-extrabold tracking-tight">{_esc(config.SITE_TITLE)}</span>
       </a>
       <span class="hidden md:inline text-xs text-neutral-500 dark:text-neutral-400">{_esc(config.SITE_TAGLINE)}</span>
-      <nav class="flex gap-1 ml-2" aria-label="페이지">{nav}</nav>
+      <nav class="flex gap-1 ml-2 overflow-x-auto no-scrollbar max-w-full [&>a]:shrink-0" aria-label="페이지">{nav}</nav>
       <span class="ml-auto flex items-center gap-1.5 text-xs text-neutral-500 dark:text-neutral-400">
         <span class="relative flex h-2 w-2" aria-hidden="true">
           <span class="animate-pulse absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
@@ -1065,27 +1094,16 @@ def _render_issue(issue: dict, index: int) -> str:
         ensure_ascii=False,
     ))
     bias_dots = {"progressive": "#3b82f6", "moderate": "#9ca3af", "conservative": "#ef4444", "unknown": "#d6d3d1"}
-    frame_colors = {"progressive": "#3b82f6", "conservative": "#ef4444", "moderate": "#9ca3af", "common": "#b45309"}
     framing = issue.get("framing") or {}
     frame_words = framing.get("words") or []
 
     def _hl(title: str) -> str:
-        """제목 속 프레임 단어를 성향 색으로 하이라이트."""
-        out = _esc(title)
-        for w in frame_words:
-            token = _esc(w.get("word", ""))
-            if token and token in out:
-                color = frame_colors.get(w.get("side"), "#b45309")
-                out = out.replace(
-                    token,
-                    f'<mark style="background:transparent;color:{color};font-weight:700">{token}</mark>',
-                )
-        return out
+        return _highlight_title(title, frame_words)
 
     framing_html = ""
     if framing.get("note"):
         chips = " · ".join(
-            f'<span style="color:{frame_colors.get(w.get("side"), "#b45309")}" class="font-semibold">{_esc(w.get("word", ""))}</span>'
+            f'<span style="color:{FRAME_COLORS.get(w.get("side"), "#b45309")}" class="font-semibold">{_esc(w.get("word", ""))}</span>'
             for w in frame_words
             if w.get("word")
         )
@@ -1175,7 +1193,7 @@ def _render_blindspot(blindspot: dict | None) -> str:
 
     parts = []
     for key, title, color, hint in groups:
-        items = blindspot.get(key) or []
+        items = (blindspot.get(key) or [])[:4]  # 사이드바는 맛보기 4건
         if not items:
             continue
         rows = "".join(_bs_row(it, color) for it in items)
@@ -1189,6 +1207,7 @@ def _render_blindspot(blindspot: dict | None) -> str:
   <h2 class="text-sm font-bold mb-0.5">블라인드스팟</h2>
   <p class="text-[11px] text-neutral-400 mb-2">한쪽 성향 매체만 보도한 이슈 — 놓치기 쉬운 관점입니다</p>
   {"".join(parts)}
+  <a href="blindspot.html" class="block mt-2.5 text-xs text-blue-600 dark:text-blue-400 hover:underline">블라인드스팟 전체 보기 →</a>
 </section>"""
 
 
@@ -1354,8 +1373,141 @@ def build(
 
     build_community_page(community, out_dir, generated_at, now, updated, stamp)
     build_scrapbook_page(out_dir, generated_at, now, updated, stamp)
+    build_blindspot_page(briefing, out_dir, generated_at, now, updated, stamp)
+    build_frame_page(briefing, out_dir, generated_at, now, updated, stamp)
     build_seo_files(briefing, out_dir, punycode_domain, now, archive_stamps or [])
     return out_dir / "index.html"
+
+
+# ── 블라인드스팟 탭: 좌우 대비 전체 뷰 ──────────────────────────────────
+
+
+def build_blindspot_page(
+    briefing: dict, out_dir: Path, generated_at: str, now: datetime, updated: str, stamp: str
+) -> None:
+    blindspot = briefing.get("blindspot") or {}
+
+    def _column(key: str, title: str, color: str) -> str:
+        items = blindspot.get(key) or []
+        if not items:
+            cards = '<p class="text-sm text-neutral-400 py-8 text-center">현재 해당 이슈가 없습니다</p>'
+        else:
+            card_list = []
+            for it in items:
+                heads = "".join(
+                    f'<li><a class="flex items-start gap-2 text-[13px] hover:text-blue-600 dark:hover:text-blue-400" href="{_esc(h["link"])}" target="_blank" rel="noopener nofollow">'
+                    f'{_favicon(h["link"])}<span class="min-w-0"><b class="font-semibold text-neutral-400 text-xs mr-1.5">{_esc(h["outlet"])}</b>{_esc(h["title"])}</span></a></li>'
+                    for h in it.get("headlines", [])
+                )
+                anchor = (
+                    f'index.html#issue-{it["issue_index"]}'
+                    if it.get("issue_index") is not None
+                    else _esc(it.get("link", "#"))
+                )
+                card_list.append(f"""<article class="rounded-xl border border-stone-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 p-5 border-t-[3px]" style="border-top-color:{color}">
+  <div class="flex items-center justify-between text-xs mb-1.5">
+    <span class="font-semibold" style="color:{color}">{title}</span>
+    <span class="text-neutral-400">{it["outlet_count"]}개 매체</span>
+  </div>
+  <h3 class="font-bold text-[15px] leading-snug mb-1.5"><a class="hover:text-blue-600 dark:hover:text-blue-400" href="{anchor}">{_esc(it["label"])}</a></h3>
+  {f'<p class="text-sm text-neutral-600 dark:text-neutral-300 mb-2.5 line-clamp-3">{_esc(it["summary"])}</p>' if it.get("summary") else ""}
+  {_render_bias_bar(it.get("bias"))}
+  <ul class="flex flex-col gap-1.5 border-t border-stone-200 dark:border-neutral-700 pt-2.5">{heads}</ul>
+</article>""")
+            cards = "".join(card_list)
+        return f'<div class="flex flex-col gap-4">{cards}</div>'
+
+    main_html = f"""<div class="py-6">
+  <p class="text-xs text-neutral-400 mb-5 max-w-[80ch]">블라인드스팟은 한쪽 성향 매체만 보도한 이슈입니다. 성향 분류는 참고용 일반 분류이며, 미분류 매체는 집계에서 '분류 없음'으로 처리됩니다.</p>
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+    <section aria-label="진보 매체만 보도">
+      <h2 class="text-sm font-bold mb-3 text-blue-600 dark:text-blue-400">🔵 진보 매체만 보도한 이슈</h2>
+      {_column("conservative_missing", "진보 매체만 보도", "#3b82f6")}
+    </section>
+    <section aria-label="보수 매체만 보도">
+      <h2 class="text-sm font-bold mb-3 text-red-600 dark:text-red-400">🔴 보수 매체만 보도한 이슈</h2>
+      {_column("progressive_missing", "보수 매체만 보도", "#ef4444")}
+    </section>
+  </div>
+</div>"""
+
+    page = _page(
+        title=f"블라인드스팟 — {config.SITE_TITLE}",
+        active="blindspot",
+        generated_at=generated_at,
+        feed="briefing.json",
+        updated_label=updated,
+        head_extra="",
+        tabs_html="",
+        after_header="",
+        main_html=main_html,
+        footer_notes=[DISCLAIMER],
+        site_stamp=stamp,
+    )
+    (out_dir / "blindspot.html").write_text(page, encoding="utf-8")
+
+
+# ── 프레임 체크 탭: 오늘의 프레임 갤러리 ────────────────────────────────
+
+
+def build_frame_page(
+    briefing: dict, out_dir: Path, generated_at: str, now: datetime, updated: str, stamp: str
+) -> None:
+    framed = [
+        (i, issue) for i, issue in enumerate(briefing.get("issues", [])) if issue.get("framing")
+    ]
+
+    cards = []
+    for i, issue in framed:
+        framing = issue["framing"]
+        words = framing.get("words") or []
+        chips = " · ".join(
+            f'<span style="color:{FRAME_COLORS.get(w.get("side"), "#b45309")}" class="font-semibold">{_esc(w.get("word", ""))}</span>'
+            for w in words if w.get("word")
+        )
+        heads = "".join(
+            f'<li><a class="flex items-start gap-2 text-[13px] hover:text-blue-600 dark:hover:text-blue-400" href="{_esc(h["link"])}" target="_blank" rel="noopener nofollow">'
+            f'{_favicon(h["link"])}<span class="min-w-0"><b class="font-semibold text-neutral-400 text-xs mr-1.5">{_esc(h["outlet"])}</b>{_highlight_title(h["title"], words)}</span></a></li>'
+            for h in issue.get("headlines", [])[:8]
+        )
+        color = CATEGORY_COLORS.get(issue["category"], "#2563eb")
+        cards.append(f"""<article class="rounded-xl border border-stone-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 p-5 border-t-[3px]" style="border-top-color:{color}">
+  <div class="flex items-center justify-between text-xs mb-1.5">
+    <span class="font-semibold rounded-full px-2.5 py-0.5" style="color:{color};background:{color}1f">{_esc(issue["category"])}</span>
+    <span class="text-neutral-400">{issue.get("outlet_count", 0)}개 매체</span>
+  </div>
+  <h3 class="font-bold text-[15px] leading-snug mb-2"><a class="hover:text-blue-600 dark:hover:text-blue-400" href="index.html#issue-{i}">{_esc(issue["label"])}</a></h3>
+  <div class="rounded-lg border border-stone-200 dark:border-neutral-700 bg-stone-50 dark:bg-neutral-900/60 p-3 mb-3">
+    <p class="text-xs text-neutral-600 dark:text-neutral-300">{_esc(framing["note"])}</p>
+    {f'<p class="mt-1.5 text-xs text-neutral-500 dark:text-neutral-400">프레임 단어: {chips}</p>' if chips else ""}
+  </div>
+  <ul class="flex flex-col gap-1.5">{heads}</ul>
+</article>""")
+
+    body = (
+        f'<div class="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4 content-start">{"".join(cards)}</div>'
+        if cards
+        else '<p class="text-sm text-neutral-400 py-16 text-center">이번 시간 브리핑에는 프레임 분석 대상 이슈가 없습니다.</p>'
+    )
+    main_html = f"""<div class="py-6">
+  <p class="text-xs text-neutral-400 mb-5 max-w-[80ch]">🔍 프레임 체크 — 같은 사건을 다룬 매체들이 제목에서 어떤 단어를 골랐는지 해부합니다. 알고리즘이 공통어·진영 전용어 후보를 산출하고 AI가 검증·서술한 참고용 분석입니다.</p>
+  {body}
+</div>"""
+
+    page = _page(
+        title=f"프레임 체크 — {config.SITE_TITLE}",
+        active="frame",
+        generated_at=generated_at,
+        feed="briefing.json",
+        updated_label=updated,
+        head_extra="",
+        tabs_html="",
+        after_header="",
+        main_html=main_html,
+        footer_notes=[DISCLAIMER],
+        site_stamp=stamp,
+    )
+    (out_dir / "frame.html").write_text(page, encoding="utf-8")
 
 
 # ── 아카이브: 시간별 스냅샷 영구 페이지 ─────────────────────────────────
@@ -1444,6 +1596,8 @@ def build_seo_files(
 
     pages = [
         ("", "1.0", "hourly"),
+        ("blindspot.html", "0.8", "hourly"),
+        ("frame.html", "0.8", "hourly"),
         ("community.html", "0.8", "hourly"),
         ("scrapbook.html", "0.3", "monthly"),
         ("archive/", "0.5", "hourly"),
@@ -1546,14 +1700,6 @@ def build_community_page(
     posts: list[dict], out_dir: Path, generated_at: str,
     now: datetime, updated: str, stamp: str,
 ) -> Path:
-    counts: dict[str, int] = {}
-    for post in posts:
-        counts[post["source"]] = counts.get(post["source"], 0) + 1
-
-    tabs = [_tab("전체", len(posts), "src", "전체", True)] + [
-        _tab(src, n, "src", src, False) for src, n in counts.items()
-    ]
-
     cards = []
     for i, p in enumerate(posts):
         hot = p.get("hot")
@@ -1672,7 +1818,7 @@ def build_community_page(
         feed="community.json",
         updated_label=updated,
         head_extra="",
-        tabs_html="".join(tabs),
+        tabs_html="",
         after_header="",
         main_html=main_html,
         footer_notes=[COMMUNITY_NOTICE],
