@@ -651,42 +651,7 @@ document.querySelectorAll(".share-btn").forEach(function (btn) {
   });
 });
 
-// ── 글자 크기 조절 (작게/보통/크게, localStorage 유지) ──
-var FS_KEY = "goreun_fs";
-var FS_NAMES = ["작게", "보통", "크게"];
-function applyFs(level) {
-  level = Math.max(0, Math.min(2, level));
-  document.documentElement.dataset.fs = String(level);
-  localStorage.setItem(FS_KEY, String(level));
-  var ind = document.getElementById("fs-indicator");
-  if (ind) ind.textContent = FS_NAMES[level] || "보통";
 
-  var fsDown = document.getElementById("fs-down");
-  var fsReset = document.getElementById("fs-reset");
-  var fsUp = document.getElementById("fs-up");
-  if (fsDown) {
-    fsDown.classList.toggle("text-blue-600", level === 0);
-    fsDown.classList.toggle("dark:text-blue-400", level === 0);
-    fsDown.classList.toggle("font-bold", level === 0);
-  }
-  if (fsReset) {
-    fsReset.classList.toggle("text-blue-600", level === 1);
-    fsReset.classList.toggle("dark:text-blue-400", level === 1);
-  }
-  if (fsUp) {
-    fsUp.classList.toggle("text-blue-600", level === 2);
-    fsUp.classList.toggle("dark:text-blue-400", level === 2);
-    fsUp.classList.toggle("font-bold", level === 2);
-  }
-  return level;
-}
-var fsLevel = applyFs(parseInt(localStorage.getItem(FS_KEY) || "1", 10));
-var fsDown = document.getElementById("fs-down");
-var fsReset = document.getElementById("fs-reset");
-var fsUp = document.getElementById("fs-up");
-if (fsDown) fsDown.addEventListener("click", function () { fsLevel = applyFs(0); });
-if (fsReset) fsReset.addEventListener("click", function () { fsLevel = applyFs(1); });
-if (fsUp) fsUp.addEventListener("click", function () { fsLevel = applyFs(2); });
 
 // ── 키보드 숏컷 & 모달 접근성 ──
 document.addEventListener("keydown", function(e) {
@@ -1357,8 +1322,6 @@ def _page(
   }} else {{
     document.documentElement.classList.remove("dark");
   }}
-  var fs = localStorage.getItem("goreun_fs") || "1";
-  document.documentElement.dataset.fs = fs;
 }})();
 </script>
 <!-- AdSense 승인 후 사이트 확인/광고 스크립트를 여기에 붙여넣으세요 -->
@@ -1390,12 +1353,6 @@ def _page(
         <button type="button" id="theme-toggle" title="테마 변경 (라이트/다크/시스템)" class="rounded-full border border-stone-300 dark:border-neutral-700 bg-white dark:bg-neutral-800 px-2.5 py-1 text-xs text-neutral-600 dark:text-neutral-300 hover:text-blue-600 dark:hover:text-blue-400 transition-colors flex items-center gap-1">
           <span id="theme-icon">💻</span>
         </button>
-
-        <div class="flex items-center rounded-full border border-stone-300 dark:border-neutral-700 bg-white dark:bg-neutral-800 p-0.5 text-xs select-none">
-          <button type="button" id="fs-down" title="글자 작게 (0단계)" class="px-2 py-0.5 rounded-full text-neutral-500 dark:text-neutral-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">가-</button>
-          <button type="button" id="fs-reset" title="글자 보통 (1단계)" class="px-1.5 py-0.5 text-[10px] font-bold text-neutral-400 border-x border-stone-200 dark:border-neutral-700 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"><span id="fs-indicator">보통</span></button>
-          <button type="button" id="fs-up" title="글자 크게 (2단계)" class="px-2 py-0.5 rounded-full text-neutral-500 dark:text-neutral-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">가+</button>
-        </div>
 
         <button type="button" id="bug-report" class="hidden sm:inline-flex rounded-full border border-stone-300 dark:border-neutral-700 bg-white dark:bg-neutral-800 px-3 py-1 text-xs text-neutral-500 dark:text-neutral-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">버그 제보</button>
       </div>

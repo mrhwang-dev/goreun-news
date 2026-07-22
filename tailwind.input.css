@@ -36,22 +36,7 @@ details[open] .tri { transform: rotate(180deg); }
 .ticker-item { opacity: 0; visibility: hidden; pointer-events: none; transition: opacity 0.5s, visibility 0.5s; }
 .ticker-item.show { opacity: 1; visibility: visible; pointer-events: auto; }
 
-/* 글자 크기 단계 (작게: 0단계, 보통: 1단계, 크게: 2단계) — 전체 비율 조화 조절 */
-:root[data-fs="0"] {
-  font-size: 14.5px;
-}
-:root[data-fs="0"] .fs-t { font-size: 13.5px !important; }
-:root[data-fs="0"] .fs-p { font-size: 12.5px !important; }
 
-:root[data-fs="1"] {
-  font-size: 16px;
-}
-
-:root[data-fs="2"] {
-  font-size: 17.5px;
-}
-:root[data-fs="2"] .fs-t { font-size: 17px !important; line-height: 1.45 !important; }
-:root[data-fs="2"] .fs-p { font-size: 15px !important; line-height: 1.6 !important; }
 
 #site-header { transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
 body, h1, h2, h3, h4, h5, h6, p, article {
