@@ -61,7 +61,7 @@ def build_briefing() -> dict:
     from cluster import allocate_slots, cluster_items
     from fetch_feeds import fetch_headlines
     from fetch_policy import fetch_policy_news
-    from summarize import label_clusters, summarize_policy
+    from summarize import label_clusters, refine_top_issues, summarize_policy
 
     items = fetch_headlines()
     print(f"헤드라인 {len(items)}건 수집 ({len(config.PRESS_FEEDS)}개 매체)")
@@ -113,6 +113,9 @@ def build_briefing() -> dict:
         pin_top=config.TOP_PIN_COUNT,
     )
     print("분야별 슬롯:", slots)
+
+    # 상위 핫이슈만 Claude 정밀 요약 (편향 교차 검증, 실패 시 1차 요약 유지)
+    refine_top_issues(selected)
 
     articles = fetch_policy_news()
     policy = summarize_policy(articles)

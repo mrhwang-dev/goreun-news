@@ -1,0 +1,131 @@
+"""다중 모델(Multi-LLM) 오케스트레이션 계층.
+
+역할 분담 (작업 난이도 기반 동적 라우팅):
+- Gemini 2.5 Flash: 대규모 단순 분류 — 후보 클러스터의 노이즈 필터링·분야 지정·
+  임시 라벨 (가성비·속도 우선)
+- Claude: 복잡한 추론·정교한 글쓰기 — 상위 핫이슈의 편향 교차 검증과 최종
+  중립 요약, 정책 브리핑 (품질 우선, 제한 호출)
+
+안정성:
+- 지수 백오프 재시도 (1s → 2s → 4s), 레이트리밋·타임아웃·5xx 대응
+- 무중단 폴백: 주 모델이 끝내 실패하면 즉시 보조 모델로 우회
+  (GEMINI_API_KEY 미등록 시에도 Claude 폴백으로 파이프라인이 계속 동작)
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import time
+
+import config
+
+BACKOFF_ATTEMPTS = 3
+BACKOFF_BASE_SECONDS = 1.0
+
+
+def _with_backoff(label: str, fn):
+    """지수 백오프 재시도. 마지막 시도까지 실패하면 예외를 다시 던진다."""
+    last_error: Exception | None = None
+    for attempt in range(BACKOFF_ATTEMPTS):
+        try:
+            return fn()
+        except Exception as e:  # 레이트리밋·타임아웃·5xx 등
+            last_error = e
+            wait = BACKOFF_BASE_SECONDS * (2**attempt)
+            print(f"[{label}] 시도 {attempt + 1}/{BACKOFF_ATTEMPTS} 실패: {e} — {wait:.0f}s 후 재시도")
+            time.sleep(wait)
+    raise last_error  # type: ignore[misc]
+
+
+def _extract_json(text: str) -> dict:
+    """모델 응답에서 JSON 객체를 추출한다 (코드펜스 등 장식 허용)."""
+    text = text.strip()
+    if text.startswith("```"):
+        text = text.strip("`")
+        if text.startswith("json"):
+            text = text[4:]
+    start, end = text.find("{"), text.rfind("}")
+    if start >= 0 and end > start:
+        text = text[start : end + 1]
+    return json.loads(text)
+
+
+# ── Claude ──────────────────────────────────────────────────────────────
+
+
+def claude_json(system: str, user: str, schema: dict) -> dict:
+    import anthropic
+
+    client = anthropic.Anthropic()
+
+    def call() -> dict:
+        resp = client.messages.create(
+            model=config.MODEL,
+            max_tokens=16000,
+            thinking={"type": "adaptive"},
+            system=system,
+            output_config={"format": {"type": "json_schema", "schema": schema}},
+            messages=[{"role": "user", "content": user}],
+        )
+        if resp.stop_reason == "refusal":
+            raise RuntimeError(f"Claude가 요청을 거부했습니다: {resp.stop_details}")
+        text = next(b.text for b in resp.content if b.type == "text")
+        return json.loads(text)
+
+    return _with_backoff("Claude", call)
+
+
+# ── Gemini ──────────────────────────────────────────────────────────────
+
+
+def gemini_json(system: str, user: str, schema: dict) -> dict:
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        raise RuntimeError("GEMINI_API_KEY 미설정")
+
+    import google.generativeai as genai
+
+    genai.configure(api_key=api_key)
+    model = genai.GenerativeModel(config.GEMINI_MODEL, system_instruction=system)
+    # Gemini의 response_schema 포맷은 별도 규격이라, JSON 모드 + 프롬프트에
+    # 스키마를 명시하는 방식으로 동일한 구조를 강제한다.
+    prompt = (
+        f"{user}\n\n다음 JSON 스키마를 정확히 따르는 JSON 객체만 출력하라:\n"
+        + json.dumps(schema, ensure_ascii=False)
+    )
+
+    def call() -> dict:
+        resp = model.generate_content(
+            prompt,
+            generation_config={"response_mime_type": "application/json"},
+            request_options={"timeout": 120},
+        )
+        return _extract_json(resp.text)
+
+    return _with_backoff("Gemini", call)
+
+
+# ── 폴백 오케스트레이션 ─────────────────────────────────────────────────
+
+
+def call_with_fallback(
+    primary: str, system: str, user: str, schema: dict
+) -> tuple[dict, str]:
+    """primary('claude'|'gemini') 실패 시 반대 모델로 무중단 우회.
+
+    반환: (결과 JSON, 실제 사용된 엔진 이름)
+    """
+    engines = {"claude": claude_json, "gemini": gemini_json}
+    order = [primary] + [e for e in engines if e != primary]
+    last_error: Exception | None = None
+    for engine in order:
+        try:
+            result = engines[engine](system, user, schema)
+            if engine != primary:
+                print(f"[폴백] {primary} → {engine} 우회 성공")
+            return result, engine
+        except Exception as e:
+            print(f"[{engine}] 최종 실패: {e}")
+            last_error = e
+    raise last_error  # type: ignore[misc]

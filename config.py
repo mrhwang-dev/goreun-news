@@ -90,9 +90,15 @@ NEWSLETTER_FORM_ACTION = os.environ.get("NEWSLETTER_FORM_ACTION", "")
 NEWSLETTER_FORM_ENTRY = os.environ.get("NEWSLETTER_FORM_ENTRY", "")
 
 # ── 모델/사이트 ─────────────────────────────────────────────────────────
+# 다중 모델 라우팅: Gemini(대규모 1차 분류) + Claude(상위 이슈 정밀 요약)
 # 비용을 줄이려면 BRIEFING_MODEL=claude-haiku-4-5 로 변경.
 # or 사용: CI에서 빈 문자열로 주입돼도 기본값이 적용되도록
 MODEL = os.environ.get("BRIEFING_MODEL") or "claude-opus-4-8"
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL") or "gemini-2.5-flash"
+
+# Claude 정밀 요약(편향 교차 검증 + 3문장 리포트)을 적용할 상위 이슈 수.
+# 나머지 이슈는 Gemini 1차 분류의 라벨·요약을 그대로 쓴다.
+REFINE_TOP_ISSUES = 12
 
 SITE_TITLE = "고른뉴스"
 SITE_TAGLINE = "골라 담아, 고르게 전합니다"
