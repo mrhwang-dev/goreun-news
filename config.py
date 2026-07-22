@@ -160,6 +160,11 @@ MODEL = os.environ.get("BRIEFING_MODEL") or "claude-opus-4-8"
 # 별칭 사용: 세대 교체 시 구모델 404(no longer available)를 피한다
 GEMINI_MODEL = os.environ.get("GEMINI_MODEL") or "gemini-flash-latest"
 
+# Claude(Anthropic) 사용 여부. Anthropic 크레딧이 없을 땐 꺼두고 전 구간 Gemini로만
+# 돌린다(정밀 요약·정책 요약도 Gemini가 담당). 크레딧 확보 후 ENABLE_CLAUDE=1 로
+# 다시 켜면 상위 이슈 Claude 정밀 요약(편향 교차 검증)이 복원된다.
+ENABLE_CLAUDE = os.environ.get("ENABLE_CLAUDE", "").strip().lower() in ("1", "true", "yes", "on")
+
 # Claude 정밀 요약(편향 교차 검증 + 3문장 리포트)을 적용할 상위 이슈 수.
 # 나머지 이슈는 Gemini 1차 분류의 라벨·요약을 그대로 쓴다.
 REFINE_TOP_ISSUES = 12

@@ -9,7 +9,8 @@
 안정성:
 - 지수 백오프 재시도 (1s → 2s → 4s), 레이트리밋·타임아웃·5xx 대응
 - 무중단 폴백: 주 모델이 끝내 실패하면 즉시 보조 모델로 우회
-  (GEMINI_API_KEY 미등록 시에도 Claude 폴백으로 파이프라인이 계속 동작)
+- config.ENABLE_CLAUDE=False(기본)이면 Claude를 아예 호출하지 않고 전 구간
+  Gemini 단독으로 동작한다. Anthropic 크레딧 확보 후 ENABLE_CLAUDE=1로 재활성화.
 """
 
 from __future__ import annotations
@@ -138,6 +139,11 @@ def call_with_fallback(
     반환: (결과 JSON, 실제 사용된 엔진 이름)
     """
     engines = {"claude": claude_json, "gemini": gemini_json}
+    # Claude 비활성(크레딧 미보유 등) 시 전 구간 Gemini 단독으로 우회한다.
+    # primary가 'claude'라도 Gemini로 재지정되며, Claude 호출은 아예 시도하지 않는다.
+    if not config.ENABLE_CLAUDE:
+        engines.pop("claude", None)
+        primary = "gemini"
     order = [primary] + [e for e in engines if e != primary]
     last_error: Exception | None = None
     for engine in order:
