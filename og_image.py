@@ -19,6 +19,7 @@ CATEGORY_COLORS = {
     "국제": "#2596a6",
     "IT·과학": "#8b5cf6",
     "생활·문화": "#d55c8d",
+    "게임": "#e5484d",
 }
 
 FONT_PATHS = [
@@ -110,30 +111,25 @@ def build_og(briefing: dict, out_path: Path, generated_at: datetime) -> Path | N
         d.text((mx + ms + 34, my + 2), "고른뉴스", font=_font(94), fill="#f2f2f4")
         d.text((mx + ms + 36, my + 112), "골라 담아, 고르게 전합니다", font=_font(34), fill="#9a9aa2")
 
-        # 오늘의 톱뉴스 (헤드라인) — 왼쪽 파란 액센트 바로 프레이밍
-        issues = briefing.get("issues", [])
-        top = issues[0]["label"] if issues else "여러 언론사의 시각을 한자리에서"
-        eyebrow_y = 300
-        d.text((L, eyebrow_y), "오늘의 주요 뉴스", font=_font(28), fill="#7aa2ff")
-        hl_y = eyebrow_y + 46
-        lines = _wrap(top, 17, max_lines=2)
-        d.rounded_rectangle([L, hl_y + 6, L + 7, hl_y + 6 + len(lines) * 70 - 16],
+        # 핵심 메시지 강조 — 왼쪽 파란 액센트 바로 프레이밍
+        hero = [f"{_num_press(briefing)}개 언론사 교차확인", "매시간 AI 중립 뉴스 브리핑"]
+        hl_y = 320
+        hf = _font(70)
+        line_h = 88
+        d.rounded_rectangle([L, hl_y + 8, L + 8, hl_y + 8 + len(hero) * line_h - 24],
                             radius=4, fill="#2563eb")
-        hf = _font(56)
         y = hl_y
-        for line in lines:
-            d.text((L + 30, y), line, font=hf, fill="#f2f2f4")
-            y += 70
+        for i, line in enumerate(hero):
+            d.text((L + 34, y), line, font=hf, fill="#f2f2f4" if i == 0 else "#c9d3f5")
+            y += line_h
 
-        # 하단 정보줄 + 도메인
-        info_y = H - 78
-        d.line([L, info_y - 22, W - L, info_y - 22], fill="#26262b", width=2)
-        d.text((L, info_y), f"{_num_press(briefing)}개 언론사 교차확인 · 매시간 AI 중립 브리핑",
-               font=_font(28), fill="#9a9aa2")
+        # 하단 도메인
+        info_y = H - 74
+        d.line([L, info_y - 24, W - L, info_y - 24], fill="#26262b", width=2)
         dom = "goreunnews.cloud"
-        df = _font(30)
+        df = _font(38)
         dw = d.textlength(dom, font=df)
-        d.text((W - L - dw, info_y - 2), dom, font=df, fill="#7aa2ff")
+        d.text((W - L - dw, info_y - 4), dom, font=df, fill="#7aa2ff")
 
         # 최하단: 분야별 슬롯 비율 컬러 바
         slots = briefing.get("slots", {})
