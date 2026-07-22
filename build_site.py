@@ -616,7 +616,7 @@ def _render_sidebar(policy: list[dict]) -> str:
     </form>
     <p id="newsletter-done" hidden class="text-sm font-medium text-emerald-600 dark:text-emerald-400">구독이 완료되었습니다!</p>
   </section>"""
-    return f"""<aside class="flex flex-col gap-5">
+    return f"""<aside class="flex flex-col gap-5 self-start lg:sticky lg:top-20">
   <section class="rounded-xl border border-stone-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 p-5">
     <h2 class="text-sm font-bold mb-0.5">정책 브리핑</h2>
     <p class="text-[11px] text-neutral-400 mb-3">출처: 대한민국 정책브리핑(korea.kr) · 공공누리 제1유형</p>
