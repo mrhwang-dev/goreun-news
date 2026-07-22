@@ -1,0 +1,38 @@
+{
+  "appId": "cloud.goreunnews.app",
+  "appName": "고른뉴스",
+  "webDir": "site",
+  "backgroundColor": "#faf9f7",
+  "ios": {
+    "contentInset": "never",
+    "backgroundColor": "#faf9f7",
+    "limitsNavigationsToAppBoundDomains": false,
+    "preferredContentMode": "mobile"
+  },
+  "android": {
+    "backgroundColor": "#faf9f7",
+    "allowMixedContent": false
+  },
+  "server": {
+    "androidScheme": "https",
+    "iosScheme": "capacitor",
+    "allowNavigation": ["goreunnews.cloud", "*.goreunnews.cloud"]
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 900,
+      "launchAutoHide": true,
+      "backgroundColor": "#faf9f7",
+      "androidScaleType": "CENTER_CROP",
+      "showSpinner": false,
+      "splashFullScreen": true,
+      "splashImmersive": false
+    },
+    "PushNotifications": {
+      "presentationOptions": ["badge", "sound", "alert"]
+    },
+    "CapacitorHttp": {
+      "enabled": false
+    }
+  }
+}

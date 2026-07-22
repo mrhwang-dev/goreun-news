@@ -1119,6 +1119,26 @@ self.addEventListener("fetch", function (e) {
 """
 
 
+# 노치·다이내믹 아일랜드·홈 인디케이터 안전 영역(Safe Area) 대응.
+# env(safe-area-inset-*)는 데스크톱/미노치 기기에서 0이므로 웹에도 무해하게 적용된다.
+# 네이티브 앱에서는 StatusBar 오버레이(native.js)와 함께 상단바 겹침을 방지한다.
+SAFE_AREA_STYLE = """<style>
+:root { --safe-top: env(safe-area-inset-top, 0px); --safe-bottom: env(safe-area-inset-bottom, 0px); }
+@supports (padding-top: env(safe-area-inset-top)) {
+  /* 스티키 헤더가 상태바/노치 아래에서 시작하도록 상단 인셋만큼 패딩 */
+  #site-header { padding-top: env(safe-area-inset-top); }
+  /* 가로 모드 노치: 본문을 좌우 인셋만큼 들여쓰기 */
+  body { padding-left: env(safe-area-inset-left); padding-right: env(safe-area-inset-right); }
+  /* 홈 인디케이터: 하단 고정 요소·푸터 여백 확보 */
+  #to-top { bottom: calc(1.5rem + env(safe-area-inset-bottom)); }
+  footer { padding-bottom: calc(3rem + env(safe-area-inset-bottom)); }
+}
+/* 네이티브 앱(standalone) 오버스크롤 바운스 시 배경 노출 최소화 */
+html.cap-native { background: #faf9f7; }
+html.cap-native.dark { background: #171717; }
+</style>"""
+
+
 def _esc(s: str) -> str:
     return html.escape(s, quote=True)
 
@@ -1767,7 +1787,9 @@ def build(
     hottest = max(heat, key=heat.get) if heat else None
 
     major_count = sum(1 for i in issues if i.get("outlet_count", 0) > 3)
-    tabs = [_tab("전체", major_count, "cat", "전체", True)]
+    # 라벨은 '주요'(4개 매체 이상 주요 뉴스만 노출), 필터 값은 "전체" 유지.
+    # '전체 22 vs 분야 합 48' 혼동을 피하려 소규모 뉴스를 숨기는 이 탭을 '주요'로 표기.
+    tabs = [_tab("주요", major_count, "cat", "전체", True)]
     for cat in config.ISSUE_CATEGORIES:
         if cat not in counts:
             continue
