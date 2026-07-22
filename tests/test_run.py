@@ -59,3 +59,33 @@ def test_breaking_excludes_estimated_ts():
     links = [r["link"] for r in result]
     assert "real" in links
     assert "est" not in links
+
+
+def test_breaking_fallback_when_no_fresh():
+    """3시간 내 속보가 없으면 12시간 이내 최신 속보로 보강해 티커가 비지 않게."""
+    now = datetime.now(timezone.utc)
+    items = [
+        {"title": "[속보] 5시간 전", "ts": now - timedelta(hours=5),
+         "outlet": "A", "link": "h5", "ts_estimated": False},
+        {"title": "[속보] 9시간 전", "ts": now - timedelta(hours=9),
+         "outlet": "B", "link": "h9", "ts_estimated": False},
+        {"title": "[속보] 20시간 전(범위 밖)", "ts": now - timedelta(hours=20),
+         "outlet": "C", "link": "h20", "ts_estimated": False},
+    ]
+    result = detect_breaking(items)
+    links = [r["link"] for r in result]
+    assert links == ["h5", "h9"]  # 최신순, 12시간 초과분(h20) 제외
+
+
+def test_breaking_prefers_fresh_over_fallback():
+    """3시간 내 속보가 있으면 오래된 것은 섞지 않는다(기존 3시간 규칙 유지)."""
+    now = datetime.now(timezone.utc)
+    items = [
+        {"title": "[속보] 1시간 전", "ts": now - timedelta(hours=1),
+         "outlet": "A", "link": "fresh", "ts_estimated": False},
+        {"title": "[속보] 6시간 전", "ts": now - timedelta(hours=6),
+         "outlet": "B", "link": "old", "ts_estimated": False},
+    ]
+    result = detect_breaking(items)
+    links = [r["link"] for r in result]
+    assert links == ["fresh"]

@@ -65,7 +65,8 @@ def build_tailwind_css(site_dir: Path) -> None:
         html_file.write_text(text, encoding="utf-8")
 
 BREAKING_RE = re.compile(r"\[\s*(속보|1보|긴급)\s*\]")
-BREAKING_MAX_AGE_HOURS = 3  # 속보는 최근 3시간 이내만
+BREAKING_MAX_AGE_HOURS = 3  # 속보는 기본 3시간 이내
+BREAKING_FALLBACK_HOURS = 12  # 3시간 내 속보가 없을 때만 이 범위의 최신 속보로 보강(심야 공백 방지)
 BREAKING_MAX = 10
 
 
@@ -95,21 +96,29 @@ def _headline_time_label(ts) -> str:
 
 
 def detect_breaking(items: list[dict]) -> list[dict]:
-    """[속보]/[1보]/[긴급] 말머리가 붙은 최근 기사를 골라낸다 (제목 원문 유지)."""
-    cutoff = datetime.now(timezone.utc) - timedelta(hours=BREAKING_MAX_AGE_HOURS)
+    """[속보]/[1보]/[긴급] 말머리가 붙은 최근 기사를 골라낸다 (제목 원문 유지).
+
+    기본은 3시간 이내지만, 그 안에 속보가 하나도 없으면(심야 등) 티커가 비지
+    않도록 12시간 이내의 최신 속보로 보강한다. 발행 시각이 추정값(피드에 날짜
+    없음)인 기사는 표시 시각이 실제와 어긋나므로 제외한다.
+    """
+    now = datetime.now(timezone.utc)
     kst = timezone(timedelta(hours=9))
-    # 발행 시각이 추정값(피드에 날짜 없음)인 기사는 제외한다 — 속보는 표시하는
-    # 시각이 실제 발행 시각과 일치해야 하고, 추정 시각으로 최신 여부도 못 믿는다.
-    breaking = [
-        it for it in items
-        if BREAKING_RE.search(it["title"])
-        and not it.get("ts_estimated")
-        and it["ts"] >= cutoff
-    ]
-    breaking.sort(key=lambda it: it["ts"], reverse=True)
+    candidates = sorted(
+        (it for it in items
+         if BREAKING_RE.search(it["title"]) and not it.get("ts_estimated")),
+        key=lambda it: it["ts"], reverse=True,
+    )
+    fresh_cutoff = now - timedelta(hours=BREAKING_MAX_AGE_HOURS)
+    fresh = [it for it in candidates if it["ts"] >= fresh_cutoff]
+    if fresh:
+        breaking = fresh
+    else:
+        fallback_cutoff = now - timedelta(hours=BREAKING_FALLBACK_HOURS)
+        breaking = [it for it in candidates if it["ts"] >= fallback_cutoff]
     return [
         {
-            "time": it["ts"].astimezone(kst).strftime("%H:%M"),
+            "time": _headline_time_label(it["ts"]),
             "outlet": it["outlet"],
             "title": it["title"],
             "link": it["link"],
