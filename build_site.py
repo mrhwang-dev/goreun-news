@@ -500,8 +500,7 @@ function openLogin(cb) {
   loginCallback = cb || null;
   var m = document.getElementById("login-modal");
   if (!m) return;
-  // 계정이 하나도 없으면 회원가입 탭을 기본으로
-  setAuthMode(Object.keys(loadAccounts()).length ? "login" : "signup");
+  setAuthMode("login");
   m.hidden = false;
   var i = document.getElementById("login-id");
   if (i) i.focus();
@@ -1139,6 +1138,187 @@ html.cap-native.dark { background: #171717; }
 </style>"""
 
 
+# Capacitor 네이티브 브리지. build_site 가 out_dir/native.js 로 기록하고 모든 페이지에 주입한다.
+# 웹 브라우저에서는 전부 무해한 no-op(초기에 조기 반환)이며, iOS/Android 앱에서만 동작한다.
+# 제공 기능: 햅틱 · 네이티브 공유 시트 · 푸시 알림 · 상태바/세이프에어리어 · briefing.json 오프라인 캐시.
+# __SITE_ORIGIN__ 은 빌드 시 실제 도메인으로 치환된다.
+NATIVE_SCRIPT = """/* 고른뉴스 네이티브 브리지 (Capacitor) — 자동 생성 파일. 수정은 build_site.py 에서. */
+(function () {
+  "use strict";
+  var SITE_ORIGIN = "__SITE_ORIGIN__";
+  var C = window.Capacitor;
+  var isNative = !!(C && typeof C.isNativePlatform === "function" && C.isNativePlatform());
+  var P = (C && C.Plugins) || {};
+  var platform = (C && typeof C.getPlatform === "function") ? C.getPlatform() : "web";
+
+  window.GoreunNative = window.GoreunNative || {};
+  window.GoreunNative.isNative = isNative;
+  window.GoreunNative.platform = platform;
+
+  // ── 햅틱 (웹에서는 no-op) ─────────────────────────────
+  function haptic(style) {
+    if (!isNative || !P.Haptics) return;
+    try {
+      if (style === "selection") { P.Haptics.selectionChanged(); return; }
+      P.Haptics.impact({ style: (style || "LIGHT").toUpperCase() });
+    } catch (e) {}
+  }
+  window.GoreunNative.haptic = haptic;
+
+  // ── 네이티브 공유 API (외부 호출용) ───────────────────
+  window.GoreunNative.share = function (opts) {
+    if (!isNative || !P.Share) return Promise.resolve(false);
+    return P.Share.share(opts || {}).then(function () { return true; }, function () { return false; });
+  };
+
+  if (!isNative) return; // ── 웹은 여기서 종료: 기존 웹 동작을 그대로 유지 ──
+
+  document.documentElement.classList.add("cap-native");
+
+  function publicUrl(btn) {
+    if (btn && btn.dataset && btn.dataset.url) return btn.dataset.url;
+    var path = location.pathname || "/";
+    var anchor = (btn && btn.dataset && btn.dataset.anchor) ? "#" + btn.dataset.anchor : "";
+    return SITE_ORIGIN + path + anchor;
+  }
+
+  // ── 상호작용 햅틱 (탭 전환·카드 펼치기·스크랩·공유 등, 캡처 위임) ──
+  document.addEventListener("click", function (e) {
+    var t = e.target;
+    if (!t || !t.closest) return;
+    var el = t.closest(".tab, .scrap-btn, .share-btn, .summary-wrap, details.headlines-toggle > summary, .tts-btn, #theme-toggle, #to-top, .frame-chip, [data-haptic]");
+    if (!el) return;
+    haptic(el.classList && el.classList.contains("scrap-btn") ? "MEDIUM" : "LIGHT");
+  }, true);
+
+  // ── 공유 버튼: OS 기본 공유 시트로 대체 (웹 클립보드 폴백 차단) ──
+  if (P.Share) {
+    document.addEventListener("click", function (e) {
+      var t = e.target;
+      var btn = (t && t.closest) ? t.closest(".share-btn") : null;
+      if (!btn) return;
+      e.stopImmediatePropagation();
+      e.preventDefault();
+      P.Share.share({
+        title: btn.dataset.title || document.title,
+        text: btn.dataset.text || "",
+        url: publicUrl(btn),
+        dialogTitle: "기사 공유"
+      }).catch(function () {});
+    }, true);
+  }
+
+  // ── 상태바 + 세이프에어리어 (테마 연동) ───────────────
+  function syncStatusBar() {
+    if (!P.StatusBar) return;
+    var dark = document.documentElement.classList.contains("dark");
+    try {
+      P.StatusBar.setOverlaysWebView({ overlay: true });
+      // Style.DARK = 밝은 아이콘(어두운 배경용), Style.LIGHT = 어두운 아이콘(밝은 배경용)
+      P.StatusBar.setStyle({ style: dark ? "DARK" : "LIGHT" });
+      if (platform === "android" && P.StatusBar.setBackgroundColor) {
+        P.StatusBar.setBackgroundColor({ color: "#00000000" }).catch(function () {});
+      }
+    } catch (e) {}
+  }
+  syncStatusBar();
+  try {
+    new MutationObserver(syncStatusBar).observe(document.documentElement, {
+      attributes: true, attributeFilter: ["class"]
+    });
+  } catch (e) {}
+
+  // ── 스플래시 숨김 (콘텐츠 준비 후) ────────────────────
+  if (P.SplashScreen) {
+    setTimeout(function () { try { P.SplashScreen.hide(); } catch (e) {} }, 200);
+  }
+
+  // ── briefing.json 오프라인 캐시 ───────────────────────
+  function fetchJSON(url) {
+    if (P.CapacitorHttp && P.CapacitorHttp.request) {
+      return P.CapacitorHttp.request({ url: url, method: "GET" }).then(function (r) {
+        var d = r && r.data;
+        return typeof d === "string" ? JSON.parse(d) : d;
+      });
+    }
+    return fetch(url, { cache: "no-store" }).then(function (r) { return r.json(); });
+  }
+  function storeBriefing(data) {
+    if (!data || !data.generated_at || !P.Preferences) return;
+    try {
+      P.Preferences.set({ key: "cached_briefing", value: JSON.stringify(data) });
+      P.Preferences.set({ key: "cached_briefing_at", value: String(data.generated_at) });
+    } catch (e) {}
+  }
+  window.GoreunNative.getCachedBriefing = function () {
+    if (!P.Preferences) return Promise.resolve(null);
+    return P.Preferences.get({ key: "cached_briefing" }).then(function (r) {
+      try { return (r && r.value) ? JSON.parse(r.value) : null; } catch (e) { return null; }
+    });
+  };
+  function refreshBriefing() {
+    // 1) 번들 동봉본을 캐시에 시드 (동일 출처 — 항상 성공, 오프라인 가독성 보장)
+    fetchJSON("briefing.json").then(storeBriefing).catch(function () {});
+    // 2) 원격 최신본으로 갱신 시도 (실패해도 번들 콘텐츠가 표시됨)
+    fetchJSON(SITE_ORIGIN + "/briefing.json").then(storeBriefing).catch(function () {});
+  }
+  refreshBriefing();
+
+  // ── 앱 생명주기: 포그라운드 복귀 시 갱신 + Android 뒤로가기 ──
+  if (P.App) {
+    P.App.addListener("appStateChange", function (st) {
+      if (st && st.isActive) { refreshBriefing(); syncStatusBar(); }
+    });
+    P.App.addListener("backButton", function () {
+      if (window.history.length > 1) window.history.back();
+      else if (P.App.exitApp) P.App.exitApp();
+    });
+  }
+
+  // ── 푸시 알림 (속보 / 시간별 브리핑) ──────────────────
+  function wirePushListeners() {
+    if (!P.PushNotifications) return;
+    P.PushNotifications.addListener("registration", function (token) {
+      if (P.Preferences && token && token.value) {
+        try { P.Preferences.set({ key: "push_token", value: token.value }); } catch (e) {}
+      }
+    });
+    P.PushNotifications.addListener("registrationError", function () {});
+    P.PushNotifications.addListener("pushNotificationActionPerformed", function (action) {
+      var data = (action && action.notification && action.notification.data) || {};
+      if (data.url) { try { location.href = data.url; } catch (e) {} }
+    });
+  }
+  function enablePush() {
+    if (!P.PushNotifications) return Promise.resolve(false);
+    return P.PushNotifications.checkPermissions().then(function (res) {
+      if (res.receive === "prompt" || res.receive === "prompt-with-rationale") {
+        return P.PushNotifications.requestPermissions();
+      }
+      return res;
+    }).then(function (res) {
+      if (res && res.receive === "granted") {
+        return P.PushNotifications.register().then(function () { return true; });
+      }
+      return false;
+    }).catch(function () { return false; });
+  }
+  window.GoreunNative.enablePush = enablePush;
+  wirePushListeners();
+  // 최초 실행 시 1회 권한 요청, 이후에는 이미 허용된 경우에만 조용히 재등록
+  if (P.Preferences) {
+    P.Preferences.get({ key: "push_prompted" }).then(function (r) {
+      if (r && r.value) { enablePush(); return; }
+      setTimeout(function () {
+        enablePush();
+        try { P.Preferences.set({ key: "push_prompted", value: "1" }); } catch (e) {}
+      }, 1500);
+    }).catch(function () {});
+  }
+})();
+"""
+
+
 def _esc(s: str) -> str:
     return html.escape(s, quote=True)
 
@@ -1350,7 +1530,7 @@ def _page(
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>{_esc(title)}</title>
 <meta name="description" content="{_esc(description or config.SITE_DESCRIPTION)}">
 {canonical_tag}{robots_tag}{gsc_tag}
@@ -1364,6 +1544,7 @@ def _page(
 <link rel="apple-touch-icon" href="{asset_prefix}icon-512.png">
 <meta name="theme-color" content="#2563eb">
 <link rel="stylesheet" href="{asset_prefix}tailwind.css">
+{SAFE_AREA_STYLE}
 <script>
 (function() {{
   var t = localStorage.getItem("goreun_theme") || "system";
@@ -1453,6 +1634,7 @@ def _page(
 {banner_html}
 <script>{BASE_SCRIPT}</script>
 {f"<script>{extra_script}</script>" if extra_script else ""}
+<script src="{asset_prefix}native.js"></script>
 {sentry}
 </body>
 </html>"""
