@@ -65,7 +65,7 @@ def build_tailwind_css(site_dir: Path) -> None:
         html_file.write_text(text, encoding="utf-8")
 
 BREAKING_RE = re.compile(r"\[\s*(속보|1보|긴급)\s*\]")
-BREAKING_MAX_AGE_HOURS = 6
+BREAKING_MAX_AGE_HOURS = 3  # 속보는 최근 3시간 이내만
 BREAKING_MAX = 10
 
 

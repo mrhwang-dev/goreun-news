@@ -75,6 +75,15 @@ PRESS_FEEDS = [
     {"outlet": "전남일보", "url": "https://www.jnilbo.com/rss/allArticle.xml"},
     {"outlet": "충청신문", "url": "https://www.dailycc.net/rss/allArticle.xml"},
     {"outlet": "제주일보", "url": "https://www.jejunews.com/rss/allArticle.xml"},
+    # 확장 배치 (2026-07-22 2차 검증: 일간·주간·월간·지역·외신 한국어판)
+    {"outlet": "국민일보", "url": "https://www.kmib.co.kr/rss/data/kmibRssAll.xml"},  # 일간지
+    {"outlet": "BBC코리아", "url": "https://feeds.bbci.co.uk/korean/rss.xml"},  # 외신(한국어판)
+    {"outlet": "주간조선", "url": "https://weekly.chosun.com/rss/allArticle.xml"},  # 주간지
+    {"outlet": "일요서울", "url": "https://www.ilyoseoul.co.kr/rss/allArticle.xml"},  # 주간지
+    {"outlet": "신동아", "url": "https://shindonga.donga.com/rss"},  # 월간지
+    {"outlet": "매일노동뉴스", "url": "https://www.labortoday.co.kr/rss/allArticle.xml"},  # 전문지
+    {"outlet": "통일뉴스", "url": "https://www.tongilnews.com/rss/allArticle.xml"},  # 전문지
+    {"outlet": "광주드림", "url": "https://www.gjdream.com/rss/allArticle.xml"},  # 지역지
 ]
 
 # 피드당 최대 수집 기사 수 (전체 볼륨 상한 관리)
@@ -122,6 +131,11 @@ OUTLET_BIAS = {
     "시사인": "progressive",
     "미디어오늘": "progressive",
     "뉴스프리존": "progressive",
+    "주간조선": "conservative",
+    "신동아": "conservative",
+    "매일노동뉴스": "progressive",
+    "통일뉴스": "progressive",
+    "스트레이트뉴스": "progressive",
     # 나머지 매체는 '분류 없음'으로 집계되며, 관측 모델(bias_model.py)이 추정한다
     "한국경제": "moderate",
 }

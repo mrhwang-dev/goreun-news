@@ -458,16 +458,42 @@ function paintStar(btn, on) {
   btn.classList.toggle("text-amber-500", on);
   btn.setAttribute("aria-pressed", on ? "true" : "false");
 }
-// ── 로그인 (닉네임만, 기기 저장 — 개인정보 최소화) ──
+// ── 로그인/회원가입 (아이디·닉네임·비밀번호 — 기기 저장, 비밀번호는 해시) ──
 var AUTH_KEY = "goreun_user";
+var ACCOUNTS_KEY = "goreun_accounts";
 function authUser() {
   try { return JSON.parse(localStorage.getItem(AUTH_KEY)); } catch (e) { return null; }
 }
+function loadAccounts() {
+  try { return JSON.parse(localStorage.getItem(ACCOUNTS_KEY)) || {}; } catch (e) { return {}; }
+}
+function sha256(text) {
+  return crypto.subtle.digest("SHA-256", new TextEncoder().encode(text)).then(function (buf) {
+    return Array.from(new Uint8Array(buf)).map(function (b) { return b.toString(16).padStart(2, "0"); }).join("");
+  });
+}
 var loginCallback = null;
+var authMode = "login";
+function setAuthMode(mode) {
+  authMode = mode;
+  var isSignup = mode === "signup";
+  document.getElementById("login-nick").hidden = !isSignup;
+  document.getElementById("login-nick").required = isSignup;
+  document.getElementById("login-submit").textContent = isSignup ? "가입하고 시작" : "로그인";
+  document.getElementById("auth-tab-login").setAttribute("aria-selected", String(!isSignup));
+  document.getElementById("auth-tab-signup").setAttribute("aria-selected", String(isSignup));
+  var err = document.getElementById("login-error");
+  if (err) err.hidden = true;
+}
 function openLogin(cb) {
   loginCallback = cb || null;
   var m = document.getElementById("login-modal");
-  if (m) { m.hidden = false; var i = document.getElementById("login-name"); if (i) i.focus(); }
+  if (!m) return;
+  // 계정이 하나도 없으면 회원가입 탭을 기본으로
+  setAuthMode(Object.keys(loadAccounts()).length ? "login" : "signup");
+  m.hidden = false;
+  var i = document.getElementById("login-id");
+  if (i) i.focus();
 }
 function closeLogin() {
   var m = document.getElementById("login-modal");
@@ -481,7 +507,7 @@ function renderAuth() {
   if (user) {
     var name = document.createElement("span");
     name.className = "text-xs text-neutral-500 dark:text-neutral-400 px-1";
-    name.textContent = user.name + " 님";
+    name.textContent = (user.name || user.id) + " 님";
     var out = document.createElement("button");
     out.type = "button";
     out.className = "rounded-full border border-stone-300 dark:border-neutral-600 bg-white dark:bg-neutral-800 px-3 py-1 text-xs text-neutral-500 dark:text-neutral-400 hover:text-blue-600 hover:border-blue-500";
@@ -504,20 +530,82 @@ function renderAuth() {
 }
 var loginForm = document.getElementById("login-form");
 if (loginForm) {
+  document.getElementById("auth-tab-login").addEventListener("click", function () { setAuthMode("login"); });
+  document.getElementById("auth-tab-signup").addEventListener("click", function () { setAuthMode("signup"); });
   loginForm.addEventListener("submit", function (e) {
     e.preventDefault();
-    var name = document.getElementById("login-name").value.trim();
-    if (!name) return;
-    localStorage.setItem(AUTH_KEY, JSON.stringify({ name: name }));
-    closeLogin();
-    renderAuth();
-    if (typeof renderScrapGate === "function") renderScrapGate();
-    toast(name + " 님, 환영합니다");
-    if (loginCallback) { var cb = loginCallback; loginCallback = null; cb(); }
+    var id = document.getElementById("login-id").value.trim();
+    var pw = document.getElementById("login-pw").value;
+    var err = document.getElementById("login-error");
+    function fail(msg) { err.textContent = msg; err.hidden = false; }
+    if (!id || !pw) return;
+    sha256(id + ":" + pw).then(function (hash) {
+      var accounts = loadAccounts();
+      if (authMode === "signup") {
+        if (accounts[id]) { fail("이미 존재하는 아이디입니다. 로그인 탭을 이용하세요."); return; }
+        var nick = document.getElementById("login-nick").value.trim() || id;
+        accounts[id] = { nick: nick, hash: hash };
+        localStorage.setItem(ACCOUNTS_KEY, JSON.stringify(accounts));
+        localStorage.setItem(AUTH_KEY, JSON.stringify({ id: id, name: nick }));
+      } else {
+        var account = accounts[id];
+        if (!account || account.hash !== hash) { fail("아이디 또는 비밀번호가 일치하지 않습니다."); return; }
+        localStorage.setItem(AUTH_KEY, JSON.stringify({ id: id, name: account.nick }));
+      }
+      closeLogin();
+      renderAuth();
+      if (typeof renderScrapGate === "function") renderScrapGate();
+      toast((authUser().name) + " 님, 환영합니다");
+      if (loginCallback) { var cb = loginCallback; loginCallback = null; cb(); }
+    });
   });
   document.getElementById("login-close").addEventListener("click", closeLogin);
 }
 renderAuth();
+
+// ── 첫 방문 온보딩 가이드 (다단계 기능 소개) ──
+var obModal = document.getElementById("onboard-modal");
+if (obModal && !localStorage.getItem("goreun_onboarded")) {
+  var OB_STEPS = [
+    { e: "⚖️", t: "고른뉴스에 오신 것을 환영합니다", d: "60여 개 언론사의 헤드라인을 교차 확인해, 감정적 표현을 걷어낸 중립 브리핑을 매시간 자동으로 만듭니다." },
+    { e: "🎨", t: "성향 스펙트럼", d: "각 이슈를 어떤 성향의 매체들이 보도했는지 진보-중도-보수 분포 바로 보여줍니다. 카드를 펼치면 매체별 원문 제목을 시간순 타임라인으로 비교할 수 있어요." },
+    { e: "🕳️", t: "블라인드스팟", d: "한쪽 성향 매체만 보도한 이슈를 따로 모아 보여줍니다. 내 피드에서 놓치기 쉬운 관점을 확인하세요." },
+    { e: "🔍", t: "프레임 체크", d: "같은 사건을 두고 매체들이 제목에서 어떤 단어를 골랐는지 AI가 해부합니다. 분포가 아니라 언어에서 프레임을 직접 목격하세요." },
+    { e: "⭐", t: "나만의 뉴스룸", d: "회원가입하면 스크랩북을 쓸 수 있고, 키워드 알림으로 관심 이슈를 상단에 고정할 수 있습니다. 모든 정보는 내 기기에만 저장됩니다." },
+  ];
+  var obIdx = 0;
+  var dots = document.getElementById("ob-dots");
+  OB_STEPS.forEach(function (_, i) {
+    var d = document.createElement("span");
+    d.className = "w-2 h-2 rounded-full bg-stone-300 dark:bg-neutral-600";
+    dots.appendChild(d);
+  });
+  function obRender() {
+    var s = OB_STEPS[obIdx];
+    document.getElementById("ob-emoji").textContent = s.e;
+    document.getElementById("ob-title").textContent = s.t;
+    document.getElementById("ob-desc").textContent = s.d;
+    document.getElementById("ob-prev").style.visibility = obIdx === 0 ? "hidden" : "visible";
+    document.getElementById("ob-next").textContent = obIdx === OB_STEPS.length - 1 ? "시작하기" : "다음";
+    Array.prototype.forEach.call(dots.children, function (d, i) {
+      d.className = "w-2 h-2 rounded-full " + (i === obIdx ? "bg-blue-600" : "bg-stone-300 dark:bg-neutral-600");
+    });
+  }
+  function obClose() {
+    localStorage.setItem("goreun_onboarded", "1");
+    obModal.hidden = true;
+  }
+  document.getElementById("ob-next").addEventListener("click", function () {
+    if (obIdx === OB_STEPS.length - 1) { obClose(); return; }
+    obIdx++; obRender();
+  });
+  document.getElementById("ob-prev").addEventListener("click", function () {
+    if (obIdx > 0) { obIdx--; obRender(); }
+  });
+  document.getElementById("ob-skip").addEventListener("click", obClose);
+  obRender();
+  obModal.hidden = false;
+}
 
 // ── 스크랩: 로그인해야 사용 가능 ──
 document.querySelectorAll(".scrap-btn").forEach(function (btn) {
@@ -1151,16 +1239,28 @@ def _page(
 <footer class="border-t border-stone-200 dark:border-neutral-700 mt-4 py-5 pb-12 text-xs text-neutral-500 dark:text-neutral-400">
   <div class="max-w-[1440px] mx-auto px-5">
     {notes}
+    <p class="flex flex-wrap gap-x-3 gap-y-1 mb-2">
+      <a class="hover:text-blue-600 dark:hover:text-blue-400" href="{asset_prefix}about.html">고른뉴스란?</a>
+      <a class="hover:text-blue-600 dark:hover:text-blue-400" href="{asset_prefix}terms.html">이용약관</a>
+      <a class="hover:text-blue-600 dark:hover:text-blue-400" href="{asset_prefix}privacy.html">개인정보처리방침</a>
+      <a class="hover:text-blue-600 dark:hover:text-blue-400" href="{asset_prefix}newsletter.html">뉴스레터 미리보기</a>
+    </p>
     <p class="flex flex-wrap gap-x-3 gap-y-1"><span>{site_stamp}</span><span id="visit-count" class="tabular-nums"></span></p>
   </div>
 </footer>
 <div id="login-modal" hidden class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-  <div class="w-80 rounded-xl border border-stone-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 p-5 shadow-xl">
-    <h3 class="font-bold mb-1">로그인</h3>
-    <p class="text-xs text-neutral-400 mb-3">닉네임만 입력하면 됩니다. 정보는 이 기기(브라우저)에만 저장되며 서버로 전송되지 않습니다.</p>
-    <form id="login-form" class="flex gap-2">
-      <input id="login-name" type="text" required maxlength="16" placeholder="닉네임" class="min-w-0 flex-1 rounded-lg border border-stone-300 dark:border-neutral-600 bg-stone-50 dark:bg-neutral-900 px-3 py-1.5 text-sm placeholder:text-neutral-400 focus:outline-none focus:border-blue-500">
-      <button type="submit" class="shrink-0 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-3.5 py-1.5">시작</button>
+  <div class="w-[22rem] rounded-xl border border-stone-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 p-5 shadow-xl">
+    <div class="flex gap-1 mb-3">
+      <button type="button" id="auth-tab-login" class="auth-tab flex-1 rounded-lg py-1.5 text-sm font-medium" aria-selected="true">로그인</button>
+      <button type="button" id="auth-tab-signup" class="auth-tab flex-1 rounded-lg py-1.5 text-sm font-medium" aria-selected="false">회원가입</button>
+    </div>
+    <p class="text-xs text-neutral-400 mb-3">계정 정보는 이 기기(브라우저)에만 저장되며 서버로 전송되지 않습니다. 비밀번호는 해시로만 보관됩니다.</p>
+    <form id="login-form" class="flex flex-col gap-2">
+      <input id="login-id" type="text" required maxlength="20" autocomplete="username" placeholder="아이디" class="rounded-lg border border-stone-300 dark:border-neutral-600 bg-stone-50 dark:bg-neutral-900 px-3 py-2 text-sm placeholder:text-neutral-400 focus:outline-none focus:border-blue-500">
+      <input id="login-nick" type="text" maxlength="16" placeholder="닉네임" hidden class="rounded-lg border border-stone-300 dark:border-neutral-600 bg-stone-50 dark:bg-neutral-900 px-3 py-2 text-sm placeholder:text-neutral-400 focus:outline-none focus:border-blue-500">
+      <input id="login-pw" type="password" required maxlength="32" autocomplete="current-password" placeholder="비밀번호" class="rounded-lg border border-stone-300 dark:border-neutral-600 bg-stone-50 dark:bg-neutral-900 px-3 py-2 text-sm placeholder:text-neutral-400 focus:outline-none focus:border-blue-500">
+      <p id="login-error" hidden class="text-xs text-red-500"></p>
+      <button type="submit" id="login-submit" class="rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium py-2">로그인</button>
     </form>
     <button type="button" id="login-close" class="mt-2.5 text-xs text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200">닫기</button>
   </div>
@@ -1500,7 +1600,7 @@ def build(
     cards.append(f'<div class="col-span-full">{_date_strip(dates, today, "archive")}</div>')
 
     main_html = f"""<div class="grid grid-cols-1 lg:grid-cols-[7fr_3fr] gap-7 py-6">
-  <section class="grid sm:grid-cols-2 xl:grid-cols-3 gap-4 content-start" aria-label="주요 이슈">{"".join(cards)}</section>
+  <section class="grid sm:grid-cols-2 gap-4 content-start" aria-label="주요 이슈">{"".join(cards)}</section>
   {_render_sidebar(briefing.get("policy", []), briefing.get("blindspot"))}
 </div>"""
 
@@ -1521,10 +1621,24 @@ def build(
   <p id="nl-banner-done" hidden class="text-sm font-medium text-emerald-600 dark:text-emerald-400">구독이 완료되었습니다!</p>
 </div>"""
 
+    onboarding = """<div id="onboard-modal" hidden class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+  <div class="w-[24rem] max-w-full rounded-2xl border border-stone-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 p-6 shadow-2xl text-center">
+    <div id="ob-emoji" class="text-5xl mb-3">⚖️</div>
+    <h3 id="ob-title" class="text-lg font-extrabold mb-1.5"></h3>
+    <p id="ob-desc" class="text-sm text-neutral-500 dark:text-neutral-400 leading-relaxed min-h-[4.5rem]"></p>
+    <div id="ob-dots" class="flex justify-center gap-1.5 my-4"></div>
+    <div class="flex gap-2">
+      <button type="button" id="ob-prev" class="flex-1 rounded-lg border border-stone-300 dark:border-neutral-600 py-2 text-sm text-neutral-500 dark:text-neutral-400">이전</button>
+      <button type="button" id="ob-next" class="flex-[2] rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium py-2">다음</button>
+    </div>
+    <button type="button" id="ob-skip" class="mt-3 text-xs text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200">건너뛰기</button>
+  </div>
+</div>"""
+
     page = _page(
         title=f"{config.SITE_TITLE} — {config.SITE_TAGLINE}",
         active="news",
-        banner_html=nl_banner,
+        banner_html=nl_banner + onboarding,
         generated_at=generated_at,
         feed="briefing.json",
         updated_label=updated,
@@ -1571,6 +1685,8 @@ def build(
 
     build_community_page(community, out_dir, generated_at, now, updated, stamp)
     build_scrapbook_page(out_dir, generated_at, now, updated, stamp)
+    build_docs(out_dir, generated_at, updated, stamp)
+    build_newsletter_page(briefing, out_dir, now)
     build_blindspot_page(briefing, out_dir, generated_at, updated, stamp, snapshots or [], now)
     build_frame_page(briefing, out_dir, generated_at, updated, stamp, snapshots or [], now)
     build_seo_files(briefing, out_dir, punycode_domain, now, archive_stamps or [])
@@ -1961,6 +2077,123 @@ def build_search_assets(
     (out_dir / "search.html").write_text(page, encoding="utf-8")
 
 
+# ── 정적 문서: 소개·약관·개인정보 + 뉴스레터 미리보기 ──────────────────
+
+
+def _build_doc(out_dir: Path, filename: str, title: str, body: str,
+               generated_at: str, updated: str, stamp: str) -> None:
+    main_html = f"""<div class="max-w-2xl mx-auto py-8 prose-doc">
+  <h1 class="text-xl font-extrabold mb-6">{_esc(title)}</h1>
+  {body}
+</div>"""
+    page = _page(
+        title=f"{title} — {config.SITE_TITLE}", active="", generated_at=generated_at,
+        feed="", updated_label=updated, head_extra="", tabs_html="", after_header="",
+        main_html=main_html, footer_notes=[], site_stamp=stamp,
+    )
+    (out_dir / filename).write_text(page, encoding="utf-8")
+
+
+ABOUT_BODY = """
+<p>고른뉴스는 <b>"골라 담아, 고르게 전합니다"</b>를 원칙으로 하는 AI 중립 뉴스 브리핑입니다. 60여 개 언론사(일간지·주간지·월간지·지역지·인터넷 언론·외신 한국어판)의 공개 헤드라인을 매시간 수집해, 같은 사건을 다룬 기사들을 알고리즘으로 묶고 AI가 감정적·평가적 표현을 걷어낸 요약을 새로 씁니다.</p>
+<h2>무엇이 다른가요</h2>
+<ul>
+<li><b>성향 스펙트럼</b> — 이슈별로 진보·중도·보수 매체의 보도 분포를 보여줍니다. 분류 근거가 약한 매체는 '중도'로 뭉개지 않고 '분류 없음'으로 정직하게 표기하며, 관측 데이터가 쌓이면 알고리즘이 추정합니다.</li>
+<li><b>블라인드스팟</b> — 한쪽 성향 매체만 보도한 이슈를 따로 모읍니다.</li>
+<li><b>프레임 체크</b> — 같은 사건의 제목들에서 매체별 단어 선택 차이를 알고리즘+AI로 해부합니다.</li>
+<li><b>아카이브·검색</b> — 매시간 브리핑이 영구 보존되고, 단어·날짜로 검색할 수 있습니다.</li>
+</ul>
+<h2>저작권 원칙</h2>
+<p>기사 본문을 수집·저장·복제하지 않습니다. 각 언론사가 공개한 헤드라인(제목)과 원문 링크만 표시하고, 요약문은 헤드라인 정보만으로 AI가 새로 작성합니다. 정책 브리핑은 공공누리 제1유형(korea.kr) 자료를 출처 표시와 함께 활용합니다.</p>
+<h2>운영</h2>
+<p>1인 운영 프로젝트이며 전 과정이 오픈소스로 공개되어 있습니다. 문의·제보는 상단의 '버그 제보' 버튼을 이용해 주세요.</p>
+"""
+
+TERMS_BODY = """
+<p>본 약관은 고른뉴스(goreunnews.cloud, 이하 "서비스") 이용에 관한 조건을 규정합니다. 서비스를 이용하면 본 약관에 동의한 것으로 봅니다.</p>
+<h2>1. 서비스의 성격</h2>
+<p>서비스는 언론사가 공개한 헤드라인과 원문 링크를 큐레이션하고 AI가 작성한 요약·분석(성향 분포, 프레임 체크 등)을 제공하는 무료 서비스입니다. AI 분석은 참고용이며 정확성을 보증하지 않습니다. 기사의 저작권은 각 언론사에 있으며, 상세 내용은 반드시 원문에서 확인해야 합니다.</p>
+<h2>2. 계정</h2>
+<p>회원 기능(스크랩북 등)의 계정 정보는 이용자의 기기(브라우저 저장소)에만 저장되며 서버로 전송되지 않습니다. 기기·브라우저를 변경하면 계정과 스크랩이 이전되지 않습니다.</p>
+<h2>3. 금지 행위</h2>
+<p>서비스에 대한 자동화된 대량 요청, 서비스 저해 행위, 콘텐츠의 상업적 무단 재배포를 금지합니다. 공개 API(briefing.json 등)는 출처 표기를 조건으로 비상업적 이용을 허용합니다.</p>
+<h2>4. 면책</h2>
+<p>서비스는 "있는 그대로" 제공되며, 요약·분류의 오류, 외부 링크 콘텐츠, 서비스 중단으로 인한 손해에 대해 책임지지 않습니다.</p>
+<h2>5. 약관의 변경</h2>
+<p>약관이 변경되면 본 페이지에 게시하며, 게시 시점부터 효력이 발생합니다.</p>
+<p class="text-neutral-400">시행일: 2026년 7월 22일</p>
+"""
+
+PRIVACY_BODY = """
+<p>고른뉴스는 개인정보 최소 수집을 설계 원칙으로 합니다.</p>
+<h2>1. 서버로 수집하는 개인정보: 없음</h2>
+<p>회원가입(아이디·닉네임·비밀번호), 스크랩북, 키워드 알림, 글자 크기 설정은 모두 <b>이용자 기기의 브라우저 저장소(localStorage)에만 저장</b>되며 운영자 서버로 전송되지 않습니다. 비밀번호는 기기 안에서도 해시로만 보관됩니다.</p>
+<h2>2. 뉴스레터 구독</h2>
+<p>구독 신청 시 입력한 이메일 주소는 폼 전송 대행(FormSubmit)을 거쳐 운영자 이메일로 전달되며, 뉴스레터 발송 목적에만 사용됩니다. 수신 거부를 원하면 '버그 제보'로 요청하면 즉시 삭제합니다.</p>
+<h2>3. 자동 수집 항목</h2>
+<ul>
+<li><b>방문 통계</b> — 익명 카운터(abacus)로 방문 횟수만 집계하며 개인을 식별하지 않습니다.</li>
+<li><b>오류 수집</b> — '버그 제보'와 오류 모니터링(Sentry)은 제보 내용과 브라우저 환경 정보를 수집할 수 있습니다.</li>
+<li><b>광고</b> — Google AdSense가 광고 제공을 위해 쿠키를 사용할 수 있습니다. <a class="text-blue-500" href="https://policies.google.com/technologies/ads?hl=ko" target="_blank" rel="noopener">Google 광고 정책</a>을 참고하세요.</li>
+</ul>
+<h2>4. 문의</h2>
+<p>개인정보 관련 문의는 상단 '버그 제보' 버튼으로 접수해 주세요.</p>
+<p class="text-neutral-400">시행일: 2026년 7월 22일</p>
+"""
+
+
+def build_docs(out_dir: Path, generated_at: str, updated: str, stamp: str) -> None:
+    _build_doc(out_dir, "about.html", "고른뉴스란?", ABOUT_BODY, generated_at, updated, stamp)
+    _build_doc(out_dir, "terms.html", "이용약관", TERMS_BODY, generated_at, updated, stamp)
+    _build_doc(out_dir, "privacy.html", "개인정보처리방침", PRIVACY_BODY, generated_at, updated, stamp)
+
+
+def build_newsletter_page(briefing: dict, out_dir: Path, now: datetime) -> None:
+    """뉴스레터 미리보기 — 이메일 호환 인라인 스타일 단일 컬럼 (발송 템플릿 겸용)."""
+    issues = briefing.get("issues", [])
+    top3 = issues[:3]
+    bs = briefing.get("blindspot") or {}
+    bs_pick = (bs.get("progressive_missing") or bs.get("conservative_missing") or [None])[0]
+    frame_pick = next((i for i in issues if i.get("framing", {}).get("note")), None)
+    policy = (briefing.get("policy") or [None])[0]
+
+    def _sec(title, inner):
+        return (f'<tr><td style="padding:18px 24px 6px;font-size:13px;font-weight:700;'
+                f'color:#2563eb;letter-spacing:1px;">{title}</td></tr>{inner}')
+
+    rows = ""
+    for i, issue in enumerate(top3):
+        rows += (f'<tr><td style="padding:8px 24px;">'
+                 f'<div style="font-size:16px;font-weight:700;line-height:1.4;color:#1c1c1e;">{i+1}. {_esc(issue["label"])}</div>'
+                 f'<div style="font-size:13px;line-height:1.7;color:#55555a;margin-top:4px;">{_esc(issue["summary"])}</div>'
+                 f'<div style="font-size:12px;color:#8a8a90;margin-top:3px;">{issue.get("outlet_count",0)}개 매체 보도 · '
+                 f'<a href="https://{config.SITE_DOMAIN}/#issue-{i}" style="color:#2563eb;">자세히 보기</a></div>'
+                 f'</td></tr>')
+    body_sections = _sec("오늘의 세 가지", rows)
+    if bs_pick:
+        body_sections += _sec("🕳️ 블라인드스팟", f'<tr><td style="padding:8px 24px;font-size:13px;color:#55555a;line-height:1.6;"><b style="color:#1c1c1e;">{_esc(bs_pick["label"])}</b> — 한쪽 성향 매체만 보도한 이슈입니다. <a href="https://{config.SITE_DOMAIN}/blindspot.html" style="color:#2563eb;">전체 보기</a></td></tr>')
+    if frame_pick:
+        body_sections += _sec("🔍 프레임 체크", f'<tr><td style="padding:8px 24px;font-size:13px;color:#55555a;line-height:1.6;">{_esc(frame_pick["framing"]["note"])} <a href="https://{config.SITE_DOMAIN}/frame.html" style="color:#2563eb;">더 보기</a></td></tr>')
+    if policy:
+        body_sections += _sec("🏛️ 오늘의 정책", f'<tr><td style="padding:8px 24px;font-size:13px;color:#55555a;line-height:1.6;"><b style="color:#1c1c1e;">{_esc(policy["title"])}</b> — {_esc(policy["summary"])}</td></tr>')
+
+    html_doc = f"""<!doctype html><html lang="ko"><head><meta charset="utf-8"><title>고른뉴스 레터</title></head>
+<body style="margin:0;background:#f4f2ee;font-family:'Apple SD Gothic Neo','Noto Sans KR','Malgun Gothic',sans-serif;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:24px 12px;">
+<table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#ffffff;border-radius:14px;overflow:hidden;border:1px solid #e6e2da;">
+  <tr><td style="background:#2563eb;padding:22px 24px;">
+    <div style="color:#fff;font-size:20px;font-weight:800;">고른뉴스</div>
+    <div style="color:#cfe0ff;font-size:12px;margin-top:2px;">{now.strftime('%Y년 %m월 %d일')} 아침 브리핑 · 골라 담아, 고르게 전합니다</div>
+  </td></tr>
+  {body_sections}
+  <tr><td style="padding:20px 24px;border-top:1px solid #eee;">
+    <div style="font-size:11px;color:#9a9aa0;line-height:1.6;">이 메일은 goreunnews.cloud 뉴스레터 구독 신청자에게 발송됩니다. 요약은 헤드라인 정보만으로 AI가 작성했으며, 기사 저작권은 각 언론사에 있습니다.<br>
+    <a href="https://{config.SITE_DOMAIN}/" style="color:#2563eb;">사이트에서 보기</a> · <a href="https://{config.SITE_DOMAIN}/privacy.html" style="color:#9a9aa0;">개인정보처리방침</a></div>
+  </td></tr>
+</table></td></tr></table></body></html>"""
+    (out_dir / "newsletter.html").write_text(html_doc, encoding="utf-8")
+
+
 # ── 아카이브: 시간별 스냅샷 영구 페이지 ─────────────────────────────────
 
 
@@ -2067,6 +2300,9 @@ def build_seo_files(
         ("community.html", "0.8", "hourly"),
         ("search.html", "0.6", "daily"),
         ("scrapbook.html", "0.3", "monthly"),
+        ("about.html", "0.5", "monthly"),
+        ("terms.html", "0.2", "yearly"),
+        ("privacy.html", "0.2", "yearly"),
         ("archive/", "0.5", "hourly"),
     ] + [(f"archive/{s}/", "0.6", "monthly") for s in (archive_stamps or [])]
     urls = "".join(
