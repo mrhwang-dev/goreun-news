@@ -29,7 +29,8 @@ HEADERS = {
     "Accept-Language": "ko-KR,ko;q=0.9",
 }
 
-POSTS_PER_SOURCE = 12
+POSTS_PER_SOURCE = 20  # 소스별 수집 상한 (노출은 참여도 점수로 통합 선별)
+TOTAL_POSTS = 36       # 최종 노출 수
 
 NOTICE_MARKERS = ("공지", "필독", "📢", "🚨", "이벤트 안내", "이용 규칙", "◤")
 
@@ -66,6 +67,17 @@ def _clean_title(fragment: str) -> str:
 
 
 def _parse_ruliweb(page: str) -> list[dict]:
+    # 목록이 노출하는 추천(recomd)·조회(hit) 지표를 함께 수집한다
+    metrics: dict[str, tuple[int, int]] = {}
+    for m in re.finditer(
+        r'subject_link[^>]*href="(/best/[^"]+)".*?class="recomd">\s*([0-9,]+)?.*?class="hit">\s*([0-9,]+)?',
+        page,
+        re.S,
+    ):
+        rec = int((m.group(2) or "0").replace(",", ""))
+        hit = int((m.group(3) or "0").replace(",", ""))
+        metrics[html.unescape(m.group(1))] = (rec, hit)
+
     posts = []
     for m in re.finditer(
         r'<a class="subject_link[^"]*"\s+href="(/best/[^"]+)"[^>]*>(.*?)</a>',
@@ -75,33 +87,51 @@ def _parse_ruliweb(page: str) -> list[dict]:
         title = _clean_title(m.group(2))
         if len(title) < 4:
             continue
-        link = "https://bbs.ruliweb.com" + html.unescape(m.group(1))
-        posts.append({"title": title, "link": link})
+        path = html.unescape(m.group(1))
+        rec, hit = metrics.get(path, (0, 0))
+        posts.append({
+            "title": title,
+            "link": "https://bbs.ruliweb.com" + path,
+            "recommends": rec or None,
+            "views": hit or None,
+        })
     return posts
 
 
 def _parse_theqoo(page: str) -> list[dict]:
+    # 행(tr) 단위로 제목 앵커와 조회수(td.m_no)를 짝지어 수집한다
     posts = []
-    for m in re.finditer(r'<a href="(/hot/\d+)"[^>]*>(.*?)</a>', page, re.S):
-        title = _clean_title(m.group(2))
+    for row in re.finditer(r"<tr[^>]*>(.*?)</tr>", page, re.S):
+        seg = row.group(1)
+        a = re.search(r'<a href="(/hot/\d+)"[^>]*>(.*?)</a>', seg, re.S)
+        if not a:
+            continue
+        title = _clean_title(a.group(2))
         if len(title) < 4 or any(marker in title for marker in NOTICE_MARKERS):
             continue
-        posts.append({"title": title, "link": "https://theqoo.net" + m.group(1)})
+        views_m = re.search(r'class="m_no">\s*([0-9,]+)', seg)
+        views = int(views_m.group(1).replace(",", "")) if views_m else None
+        posts.append({"title": title, "link": "https://theqoo.net" + a.group(1), "views": views})
     return posts
 
 
 def _parse_etoland(page: str) -> list[dict]:
     posts = []
-    for m in re.finditer(r'<a[^>]+href="(/b/etohumor07/view/[^"]+)"[^>]*>', page):
-        title_m = re.search(r'title="([^"]{4,})"', m.group(0))
+    for m in re.finditer(
+        r'<a([^>]+href="(/b/etohumor07/view/[^"]+)"[^>]*)>(.*?)</a>', page, re.S
+    ):
+        title_m = re.search(r'title="([^"]{4,})"', m.group(1))
         if not title_m:
             continue
         title = _clean_title(title_m.group(1))
         if len(title) < 4 or any(marker in title for marker in NOTICE_MARKERS):
             continue
-        posts.append(
-            {"title": title, "link": "https://www.etoland.co.kr" + html.unescape(m.group(1))}
-        )
+        comments_m = re.search(r"comment-s[^>]*>\((?:<!-- -->)?(\d+)", m.group(3))
+        posts.append({
+            "title": title,
+            "link": "https://www.etoland.co.kr" + html.unescape(m.group(2)),
+            "comments": int(comments_m.group(1)) if comments_m else None,
+        })
     return posts
 
 
@@ -174,12 +204,30 @@ def fetch_community() -> list[dict]:
         per_source.append(bucket)
         time.sleep(0.3)
 
-    # 소스별 블록 나열 대신 순위 교차(라운드로빈) — 각 커뮤니티 1위들이 먼저 온다
-    all_posts: list[dict] = []
-    for rank in range(POSTS_PER_SOURCE):
-        for bucket in per_source:
-            if rank < len(bucket):
-                all_posts.append(bucket[rank])
+    # 참여도 기반 통합 랭킹: 소스마다 지표 스케일이 달라(더쿠 조회수 ≫ 이토랜드 댓글)
+    # 소스 내 최대값으로 정규화(0~1)한 점수로 전체를 정렬한다.
+    # 지표가 없는 소스는 사이트 자체 랭킹 순서를 점수로 환산해 공정하게 섞는다.
+    def _engagement(post: dict) -> int | None:
+        for key in ("views", "recommends", "comments"):
+            if post.get(key):
+                return post[key]
+        return None
+
+    scored: list[dict] = []
+    for bucket in per_source:
+        metrics = [_engagement(p) for p in bucket]
+        max_metric = max((m for m in metrics if m), default=0)
+        for idx, post in enumerate(bucket):
+            metric = metrics[idx]
+            if metric and max_metric:
+                score = metric / max_metric
+            else:
+                score = 1.0 - idx / max(len(bucket), 1)
+            post["src_rank"] = idx + 1
+            scored.append({**post, "_score": score})
+
+    scored.sort(key=lambda p: p["_score"], reverse=True)
+    all_posts = [{k: v for k, v in p.items() if k != "_score"} for p in scored[:TOTAL_POSTS]]
 
     # 썸네일: 신규 글만 og:image 1회 조회 (핫링크 표시용 URL만 저장, 이미지 미복제)
     budget = THUMB_FETCH_BUDGET
