@@ -155,6 +155,28 @@ if (window.location.hash.startsWith("#cat=")) {
   }
 }
 
+// ── 날짜 앵커 ScrollSpy (블라인드스팟, 프레임 체크 등) ──
+var dateAnchors = document.querySelectorAll(".date-anchor");
+if (dateAnchors.length > 0 && "IntersectionObserver" in window) {
+  var observer = new IntersectionObserver(function(entries) {
+    entries.forEach(function(entry) {
+      if (entry.isIntersecting) {
+        var id = entry.target.id.substring(2);
+        dateAnchors.forEach(function(a) {
+          if (a.dataset.date === id) {
+            a.classList.add("font-bold", "text-blue-600", "dark:text-blue-400");
+          } else {
+            a.classList.remove("font-bold", "text-blue-600", "dark:text-blue-400");
+          }
+        });
+      }
+    });
+  }, { rootMargin: "-20% 0px -70% 0px" });
+  document.querySelectorAll("section[id^='d-']").forEach(function(sec) {
+    observer.observe(sec);
+  });
+}
+
 // ── 속보 티커: 단일 요소 내용 교체(페이드) — 항목 겹침 원천 차단 ──
 var tickerLink = document.getElementById("ticker-link");
 var tickerDataEl = document.getElementById("ticker-data");
@@ -2000,10 +2022,10 @@ def build(
         if i == 3:  # 4번째와 5번째 카드 사이 광고
             cards.append(f'<div class="col-span-full">{ad_slot("feed-1")}</div>')
     cards.append('<div id="feed-sentinel" class="col-span-full h-1" aria-hidden="true"></div>')
-    # 뉴스는 오늘만 표시 — 이전일은 하단 날짜 스트립으로 해당일 스냅샷 이동
-    today = now.strftime("%Y-%m-%d")
+    # 뉴스는 최신 스냅샷을 표시 — 이전일은 하단 날짜 스트립으로 해당일 스냅샷 이동
     dates = _dates_of(snapshots or [])
-    cards.append(f'<div class="col-span-full">{_date_strip(dates, today, "archive")}</div>')
+    active_idx_date = dates[0][0] if dates else now.strftime("%Y-%m-%d")
+    cards.append(f'<div class="col-span-full">{_date_strip(dates, active_idx_date, "archive")}</div>')
 
     main_html = f"""<div class="grid grid-cols-1 lg:grid-cols-[7fr_3fr] gap-7 py-6">
   <h1 class="sr-only">{_esc(config.SITE_TITLE)} — {_esc(config.SITE_TAGLINE)}</h1>
@@ -2146,7 +2168,7 @@ def _date_strip(
         if date == active_date:
             parts.append(f'<span class="font-bold text-blue-600 dark:text-blue-400">{label}</span>')
         elif mode == "anchor":
-            parts.append(f'<a class="hover:text-blue-600 dark:hover:text-blue-400" href="#d-{date}">{label}</a>')
+            parts.append(f'<a class="date-anchor transition-colors hover:text-blue-600 dark:hover:text-blue-400" data-date="{date}" href="#d-{date}">{label}</a>')
         else:
             parts.append(f'<a class="hover:text-blue-600 dark:hover:text-blue-400" href="{asset_prefix}archive/{_esc(stamp)}/">{label}</a>')
     return (
