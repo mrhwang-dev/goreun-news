@@ -1186,7 +1186,7 @@ NATIVE_SCRIPT = """/* 고른뉴스 네이티브 브리지 (Capacitor) — 자동
   document.addEventListener("click", function (e) {
     var t = e.target;
     if (!t || !t.closest) return;
-    var el = t.closest(".tab, .scrap-btn, .share-btn, .summary-wrap, details.headlines-toggle > summary, .tts-btn, #theme-toggle, #to-top, .frame-chip, [data-haptic]");
+    var el = t.closest(".tab, .scrap-btn, .share-btn, .summary-wrap, details.headlines-toggle > summary, #theme-toggle, #to-top, .frame-chip, [data-haptic]");
     if (!el) return;
     haptic(el.classList && el.classList.contains("scrap-btn") ? "MEDIUM" : "LIGHT");
   }, true);
@@ -1786,7 +1786,6 @@ def _render_issue(issue: dict, index: int) -> str:
     </span>
     <span class="flex items-center gap-2">
       <span class="text-neutral-400">{outlet_count}개 매체</span>
-      <button type="button" class="tts-btn text-base leading-none text-neutral-300 dark:text-neutral-600 hover:text-blue-500" aria-label="요약 듣기" title="요약 듣기">🔊</button>
       <button type="button" class="scrap-btn text-base leading-none text-neutral-300 dark:text-neutral-600 hover:text-amber-500" aria-label="스크랩" data-scrap="{scrap_payload}">☆</button>
     </span>
   </div>
@@ -2058,6 +2057,11 @@ def build(
     (out_dir / "index.html").write_text(page, encoding="utf-8")
     (out_dir / "sw.js").write_text(
         SERVICE_WORKER.replace("goreun-v1", f"goreun-{now.strftime('%Y%m%d%H')}"),
+        encoding="utf-8",
+    )
+    # Capacitor 네이티브 브리지 (iOS/Android 앱 전용, 웹에서는 no-op)
+    (out_dir / "native.js").write_text(
+        NATIVE_SCRIPT.replace("__SITE_ORIGIN__", f"https://{config.SITE_DOMAIN}"),
         encoding="utf-8",
     )
 

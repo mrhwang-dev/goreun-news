@@ -22,7 +22,7 @@ from build_site import build, build_archive_pages
 ROOT = Path(__file__).resolve().parent
 
 ARCHIVE_KEEP = 72  # 사이트에 렌더링할 최근 스냅샷 수 (3일치)
-BIAS_STATE_PATH = ROOT / "data" / "bias_model_state.json"  # 히스테리시스용 직전 판정
+from db import get_connection
 
 
 def _load_snapshots() -> list[tuple[str, dict]]:
@@ -283,15 +283,26 @@ def main() -> None:
         from bias_model import compute_bias_model
 
         prev_snaps = _load_snapshots()
+        prev_state = {}
         try:
-            prev_state = json.loads(BIAS_STATE_PATH.read_text(encoding="utf-8"))
-        except (FileNotFoundError, json.JSONDecodeError):
-            prev_state = {}
+            with get_connection() as conn:
+                row = conn.execute("SELECT value FROM bias_state WHERE key = 'all'").fetchone()
+                if row:
+                    prev_state = json.loads(row["value"])
+        except Exception as e:
+            print(f"[경고] 성향 관측 모델 상태 로드 실패: {e}")
+
         bias_model = compute_bias_model(prev_snaps, prev_state)
-        BIAS_STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
-        BIAS_STATE_PATH.write_text(
-            json.dumps(bias_model, ensure_ascii=False), encoding="utf-8"
-        )
+        
+        try:
+            with get_connection() as conn:
+                conn.execute(
+                    "INSERT OR REPLACE INTO bias_state (key, value) VALUES ('all', ?)",
+                    (json.dumps(bias_model, ensure_ascii=False),)
+                )
+                conn.commit()
+        except Exception as e:
+            print(f"[경고] 성향 관측 모델 상태 저장 실패: {e}")
         classified = sum(1 for r in bias_model.values() if r.get("lean"))
         print(f"성향 관측 모델: 표 축적 {len(bias_model)}개 매체, 분류 확정 {classified}개")
 

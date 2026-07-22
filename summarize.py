@@ -23,7 +23,7 @@ from pathlib import Path
 import config
 from llm import call_with_fallback
 
-CACHE_PATH = Path(__file__).resolve().parent / "data" / "cache.json"
+from db import get_connection
 CACHE_TTL_SECONDS = 3 * 24 * 3600
 
 TRIAGE_SCHEMA = {
@@ -147,25 +147,33 @@ SYSTEM_POLICY = """너는 '고른뉴스'의 정책 브리핑 편집자다. 대�
 
 
 def _load_cache() -> dict:
+    cache = {"clusters": {}, "refined": {}, "policy": {}}
     try:
-        cache = json.loads(CACHE_PATH.read_text(encoding="utf-8"))
-    except (FileNotFoundError, json.JSONDecodeError):
-        cache = {}
-    for section in ("clusters", "refined", "policy"):
-        cache.setdefault(section, {})
+        with get_connection() as conn:
+            for row in conn.execute("SELECT section, k, v, t FROM cache"):
+                if row["section"] in cache:
+                    cache[row["section"]][row["k"]] = {"v": json.loads(row["v"]), "t": row["t"]}
+    except Exception as e:
+        print(f"[경고] SQLite 캐시 로드 실패: {e}")
     return cache
 
 
 def _save_cache(cache: dict) -> None:
     now = time.time()
-    for section in ("clusters", "refined", "policy"):
-        cache[section] = {
-            k: v
-            for k, v in cache.get(section, {}).items()
-            if now - v.get("t", 0) < CACHE_TTL_SECONDS
-        }
-    CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
-    CACHE_PATH.write_text(json.dumps(cache, ensure_ascii=False), encoding="utf-8")
+    try:
+        with get_connection() as conn:
+            # 오래된 캐시 정리
+            conn.execute("DELETE FROM cache WHERE t < ?", (now - CACHE_TTL_SECONDS,))
+            for section in ("clusters", "refined", "policy"):
+                for k, v_dict in cache.get(section, {}).items():
+                    if now - v_dict.get("t", 0) < CACHE_TTL_SECONDS:
+                        conn.execute(
+                            "INSERT OR REPLACE INTO cache (section, k, v, t) VALUES (?, ?, ?, ?)",
+                            (section, k, json.dumps(v_dict["v"], ensure_ascii=False), v_dict["t"])
+                        )
+            conn.commit()
+    except Exception as e:
+        print(f"[경고] SQLite 캐시 저장 실패: {e}")
 
 
 def _cluster_key(titles: list[str]) -> str:

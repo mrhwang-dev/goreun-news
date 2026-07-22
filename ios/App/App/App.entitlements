@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+	  푸시 알림용 엔타이틀먼트.
+	  Xcode > Target(App) > Signing & Capabilities > "+ Capability" > Push Notifications 를 추가하면
+	  Xcode 가 이 파일을 자동으로 프로젝트에 연결(CODE_SIGN_ENTITLEMENTS)합니다.
+	  개발 중에는 development, 앱스토어 배포 시에는 production 으로 자동 전환됩니다.
+	-->
+	<key>aps-environment</key>
+	<string>development</string>
+</dict>
+</plist>

@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 import os
 import time
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception
 
 import config
 
@@ -33,7 +34,7 @@ _NON_RETRYABLE_MARKERS = (
 )
 
 
-def _is_retryable(error: Exception) -> bool:
+def _is_retryable(error: BaseException) -> bool:
     """레이트리밋(429)·타임아웃·5xx만 재시도. 4xx 계열은 즉시 폴백."""
     msg = str(error)
     if "429" in msg or "rate" in msg.lower():
@@ -42,19 +43,18 @@ def _is_retryable(error: Exception) -> bool:
 
 
 def _with_backoff(label: str, fn):
-    """지수 백오프 재시도. 재시도 불가 오류나 마지막 실패는 예외를 다시 던진다."""
-    last_error: Exception | None = None
-    for attempt in range(BACKOFF_ATTEMPTS):
-        try:
-            return fn()
-        except Exception as e:  # 레이트리밋·타임아웃·5xx 등
-            last_error = e
-            if not _is_retryable(e) or attempt == BACKOFF_ATTEMPTS - 1:
-                break
-            wait = BACKOFF_BASE_SECONDS * (2**attempt)
-            print(f"[{label}] 시도 {attempt + 1}/{BACKOFF_ATTEMPTS} 실패: {e} — {wait:.0f}s 후 재시도")
-            time.sleep(wait)
-    raise last_error  # type: ignore[misc]
+    """지수 백오프 재시도 (Tenacity)."""
+    @retry(
+        stop=stop_after_attempt(BACKOFF_ATTEMPTS),
+        wait=wait_exponential(multiplier=BACKOFF_BASE_SECONDS, min=1, max=10),
+        retry=retry_if_exception(_is_retryable),
+        reraise=True,
+        before_sleep=lambda rs: print(f"[{label}] 시도 {rs.attempt_number} 실패: {rs.outcome.exception()} — 대기 후 재시도")
+    )
+    def wrapper():
+        return fn()
+    
+    return wrapper()
 
 
 def _extract_json(text: str) -> dict:
