@@ -3,6 +3,8 @@ name: hourly-briefing
 on:
   schedule:
     - cron: "5 * * * *" # 매시간 (Actions 스케줄 지연을 감안해 5분에 실행)
+  push:
+    branches: [main]
   workflow_dispatch: {} # 수동 실행
 
 permissions:
