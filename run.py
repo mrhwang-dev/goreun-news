@@ -266,7 +266,14 @@ def build_briefing(bias_model: dict | None = None) -> dict:
 def main() -> None:
     parser = argparse.ArgumentParser(description="고른뉴스 생성")
     parser.add_argument("--mock", action="store_true", help="예시 데이터로 사이트만 생성")
+    parser.add_argument(
+        "--app",
+        action="store_true",
+        help="모바일 앱(Capacitor) 빌드: 각 페이지에 capacitor.js·native.js 주입 "
+        "(별도로 `npm run app:runtime`으로 capacitor.js 생성 필요)",
+    )
     args = parser.parse_args()
+    build_site.set_app_build(args.app)
 
     snapshots: list[tuple[str, dict]] = []
     if args.mock:
@@ -307,6 +314,18 @@ def main() -> None:
         print(f"성향 관측 모델: 표 축적 {len(bias_model)}개 매체, 분류 확정 {classified}개")
 
         briefing = build_briefing(bias_model)
+
+        # 안전장치: 본 브리핑 이슈가 0건이면 AI 라벨링(Gemini) 실패로 판단한다.
+        # (헤드라인 수집·속보는 정상인데 label_clusters가 전량 실패하면 이 상태가 된다.)
+        # 이대로 아카이브·배포하면 정상 뉴스가 통째로 사라진 빈 사이트가 나가고,
+        # 뒤이어 게임 마이그레이션만 남아 '게임만 N건'처럼 보인다. 즉시 중단해
+        # 마지막 정상 배포를 유지하고, 다음 정상 실행이 사이트를 복구하도록 한다.
+        if not briefing.get("issues"):
+            raise SystemExit(
+                "[중단] 본 브리핑 이슈 0건 — AI 라벨링 실패로 판단. "
+                "아카이브/배포를 건너뛰어 기존 사이트를 유지합니다."
+            )
+
         from fetch_community import fetch_community
 
         try:
@@ -336,7 +355,7 @@ def main() -> None:
         if p.get("board_news"):
             game_issues.append({
                 "label": p["title"],
-                "summary": "게임 전문 커뮤니티에서 실시간으로 주목받고 있는 주요 소식입니다.",
+                "summary": "게임 커뮤니티 뉴스 게시판에서 수집한 소식입니다. 자세한 내용은 원문에서 확인하세요.",
                 "category": "게임",
                 "outlet_count": 1,
                 "bias": {"moderate": 1},
