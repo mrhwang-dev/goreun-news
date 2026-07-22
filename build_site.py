@@ -53,7 +53,7 @@ def ad_slot(unit_id: str) -> str:
        data-ad-client="{_esc(config.ADSENSE_CLIENT_ID)}"
        data-ad-format="auto"
        data-full-width-responsive="true"></ins>
-  <script>(adsbygoogle = window.adsbygoogle || []).push({});</script>
+  <script>(adsbygoogle = window.adsbygoogle || []).push({{}});</script>
 </div>"""
     return f"""<div class="ad-unit relative overflow-hidden rounded-xl border border-stone-200 dark:border-neutral-700 min-h-[250px] flex items-center justify-center" data-ad-unit="{unit_id}">
   <div class="absolute inset-0 animate-pulse bg-gradient-to-br from-stone-100 to-stone-200 dark:from-neutral-800 dark:to-neutral-700" aria-hidden="true"></div>
