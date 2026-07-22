@@ -135,7 +135,7 @@ def render_body(briefing: dict, generated_at: datetime) -> str:
     parts.append(
         f"""<footer class="site">
   <p>{_esc(DISCLAIMER)}</p>
-  <p>매일 아침 7시(KST) 자동 업데이트 · 생성 시각 {generated_at.strftime('%Y-%m-%d %H:%M KST')}</p>
+  <p>ⓒ {_esc(config.SITE_TITLE)} ({_esc(config.SITE_DOMAIN)}) · 매일 아침 7시(KST) 자동 업데이트 · 생성 시각 {generated_at.strftime('%Y-%m-%d %H:%M KST')}</p>
 </footer></div>"""
     )
     return "\n".join(parts)

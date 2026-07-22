@@ -24,5 +24,6 @@ MAX_ITEMS_FOR_SUMMARY = 60
 # Claude 모델. 비용을 줄이려면 BRIEFING_MODEL=claude-haiku-4-5 로 변경.
 MODEL = os.environ.get("BRIEFING_MODEL", "claude-opus-4-8")
 
-SITE_TITLE = "오늘의 중립 브리핑"
-SITE_TAGLINE = "여러 언론사의 보도를 AI가 교차 확인해 사실 중심으로 정리합니다"
+SITE_TITLE = "고른뉴스"
+SITE_TAGLINE = "골라 담아, 고르게 전합니다 — 여러 언론사의 보도를 AI가 교차 확인한 중립 브리핑"
+SITE_DOMAIN = "goreun.news"
