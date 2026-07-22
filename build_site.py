@@ -1265,8 +1265,11 @@ def _render_issue(issue: dict, index: int) -> str:
     framing = issue.get("framing") or {}
     frame_words = framing.get("words") or []
 
+    side_frame_words = [w for w in frame_words if w.get("side") != "common"]
+
     def _hl(title: str) -> str:
-        return _highlight_title(title, frame_words)
+        # 공통어까지 색칠하면 노이즈 — 진영 전용어만 하이라이트
+        return _highlight_title(title, side_frame_words)
 
     framing_html = ""
     if framing.get("note"):
@@ -1597,8 +1600,8 @@ def _date_strip(
     dates: list[tuple[str, str]], active_date: str, mode: str, asset_prefix: str = ""
 ) -> str:
     """섹션 하단 날짜 선택 스트립. mode: 'archive'(스냅샷 링크) | 'anchor'(#d-날짜)."""
-    if not dates:
-        return ""
+    if len(dates) < 2:
+        return ""  # 선택지가 없으면 표시하지 않는다
     parts = []
     for date, stamp in dates[:7]:
         label = _esc(_date_label(date))
@@ -1748,11 +1751,17 @@ def build_frame_page(
                 continue
             words = framing.get("words") or []
             chips = _frame_chips(words)
+            # 표시 기준(최초 목격 일시)과 정렬 기준을 일치시킨다
+            ordered_heads = sorted(
+                issue.get("headlines", []),
+                key=lambda h: first_seen.get(h.get("link", ""), (today, h.get("time", ""))),
+            )[:8]
+            side_words = [w for w in words if w.get("side") != "common"]  # 공통어는 칩에만
             heads = "".join(
                 f'<li class="flex items-start gap-2">'
                 f'<time class="w-[5.5rem] shrink-0 pt-px text-[10px] text-neutral-400 tabular-nums" title="최초 보도 일시">{_esc(_first_seen_label(h))}</time>'
-                f'<div class="min-w-0 flex-1">{_headline_anchor(h, _highlight_title(h["title"], words))}</div></li>'
-                for h in issue.get("headlines", [])[:8]
+                f'<div class="min-w-0 flex-1">{_headline_anchor(h, _highlight_title(h["title"], side_words))}</div></li>'
+                for h in ordered_heads
             )
             color = CATEGORY_COLORS.get(issue["category"], "#2563eb")
             title_html = (
@@ -2203,8 +2212,22 @@ def build_community_page(
     posts: list[dict], out_dir: Path, generated_at: str,
     now: datetime, updated: str, stamp: str,
 ) -> Path:
+    # 베스트 오브 베스트: 각 커뮤니티 1위 글 + HOT 글 (목록보다 먼저 계산)
+    seen_links: set[str] = set()
+    best_posts: list[dict] = []
+    first_of_source: set[str] = set()
+    for p in posts:
+        is_first = p["source"] not in first_of_source
+        if is_first:
+            first_of_source.add(p["source"])
+        if (is_first or p.get("hot")) and p["link"] not in seen_links:
+            seen_links.add(p["link"])
+            best_posts.append(p)
+    best_links = {p["link"] for p in best_posts[:6]}
+
     cards = []
-    for i, p in enumerate(posts):
+    listed = [p for p in posts if p["link"] not in best_links]
+    for i, p in enumerate(listed):
         hot = p.get("hot")
         badge_cls = SOURCE_BADGE.get(p["source"], "bg-stone-500 text-white")
         hot_badge = (
@@ -2261,7 +2284,9 @@ def build_community_page(
         for w in _trend_keywords(posts)
     ) or '<span class="text-xs text-neutral-400">키워드 집계 중</span>'
 
-    news_posts = [p for p in posts if p.get("news")][:5]
+    marker_news = [p for p in posts if p.get("news") and not p.get("board_news")]
+    board_news = [p for p in posts if p.get("news") and p.get("board_news")]
+    news_posts = (marker_news + board_news)[:5]
     news_rows = "".join(
         f'<a class="block text-[13px] py-1.5 border-t border-stone-200 dark:border-neutral-700 first:border-0 hover:text-blue-600 dark:hover:text-blue-400 truncate" '
         f'href="{_esc(p["link"])}" target="_blank" rel="noopener nofollow">{_esc(p["title"])}</a>'
@@ -2290,17 +2315,7 @@ def build_community_page(
   {ad_slot("community-1")}
 </aside>"""
 
-    # 베스트 오브 베스트: 각 커뮤니티 1위 글 + HOT 글을 상단에 크로스 커뮤니티로
-    seen_links: set[str] = set()
-    best_posts: list[dict] = []
-    first_of_source: set[str] = set()
-    for p in posts:
-        is_first = p["source"] not in first_of_source
-        if is_first:
-            first_of_source.add(p["source"])
-        if (is_first or p.get("hot")) and p["link"] not in seen_links:
-            seen_links.add(p["link"])
-            best_posts.append(p)
+
     def _best_card(p: dict) -> str:
         thumb_html = ""
         if p.get("thumb"):

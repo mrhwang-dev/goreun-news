@@ -210,19 +210,25 @@ def fetch_community() -> list[dict]:
         except Exception as e:  # 개별 소스 장애가 전체를 막지 않도록
             print(f"[경고] {source['name']} 인기글 수집 실패: {e}")
             continue
+        from quality import is_promotional
+
         dedupe: set[str] = set()
         bucket: list[dict] = []
         for post in posts:
             if post["link"] in dedupe:
                 continue
             dedupe.add(post["link"])
+            if is_promotional(post["title"]):  # 보도자료·홍보성 글 제외
+                continue
             rec = seen_out.setdefault(post["link"], {"t": now, "thumb": None, "checked": False})
             is_supernova = (not first_run) and (now - rec["t"] < NEW_POST_WINDOW_SECONDS)
             hot = is_supernova or any(k in post["title"] for k in HOT_KEYWORDS)
-            news = bool(source.get("force_news")) or any(
-                k in post["title"] for k in NEWS_MARKERS
-            )
-            bucket.append({"source": source["name"], "hot": hot, "news": news, **post})
+            board_news = bool(source.get("force_news"))
+            news = board_news or any(k in post["title"] for k in NEWS_MARKERS)
+            bucket.append({
+                "source": source["name"], "hot": hot, "news": news,
+                "board_news": board_news, **post,
+            })
             if len(bucket) >= POSTS_PER_SOURCE:
                 break
         print(f"[커뮤니티] {source['name']} 인기글 {len(bucket)}건")
