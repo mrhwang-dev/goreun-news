@@ -118,8 +118,12 @@ def build_briefing() -> dict:
     # 상위 핫이슈만 Claude 정밀 요약 (편향 교차 검증, 실패 시 1차 요약 유지)
     refine_top_issues(selected)
 
-    articles = fetch_policy_news()
-    policy = summarize_policy(articles)
+    try:
+        articles = fetch_policy_news()
+        policy = summarize_policy(articles)
+    except Exception as e:
+        print(f"[경고] 정책 브리핑 단계 실패 — 건너뜀: {e}")
+        policy = []
     print(f"정책 브리핑 {len(policy)}건")
 
     # 속보 → 해당 이슈 카드 매핑 (티커 클릭 시 카드로 스크롤)
@@ -162,7 +166,11 @@ def main() -> None:
         briefing = build_briefing()
         from fetch_community import fetch_community
 
-        community = fetch_community()
+        try:
+            community = fetch_community()
+        except Exception as e:
+            print(f"[경고] 커뮤니티 단계 실패 — 건너뜀: {e}")
+            community = []
 
     out_path = build(briefing, community, ROOT / "site")
     (ROOT / "site" / "briefing.json").write_text(

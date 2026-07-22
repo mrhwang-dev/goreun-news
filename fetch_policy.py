@@ -32,7 +32,11 @@ def _strip_tags(fragment: str) -> str:
 def fetch_policy_news(count: int | None = None) -> list[dict]:
     """정책뉴스 목록에서 최신 기사 본문 텍스트를 수집한다."""
     count = count or config.POLICY_COUNT
-    listing = _get(config.POLICY_LIST_URL)
+    try:
+        listing = _get(config.POLICY_LIST_URL)
+    except Exception as e:  # korea.kr 간헐 타임아웃 — 전체 파이프라인을 막지 않는다
+        print(f"[경고] 정책뉴스 목록 수집 실패: {e}")
+        return []
     news_ids = []
     for m in re.finditer(r"policyNewsView\.do\?newsId=(\d+)", listing):
         if m.group(1) not in news_ids:
