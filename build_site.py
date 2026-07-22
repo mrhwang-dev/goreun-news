@@ -652,6 +652,9 @@ document.querySelectorAll(".share-btn").forEach(function (btn) {
 });
 
 
+// ── 검색 단축키 표시: OS에 따라 ⌘K / Ctrl+K ──
+var searchKbd = document.getElementById("search-kbd");
+if (searchKbd) searchKbd.textContent = /Mac|iPhone|iPad/.test(navigator.platform) ? "⌘K" : "Ctrl+K";
 
 // ── 키보드 숏컷 & 모달 접근성 ──
 document.addEventListener("keydown", function(e) {
@@ -1362,7 +1365,7 @@ def _page(
       <nav class="flex items-center gap-1 overflow-x-auto no-scrollbar [&>a]:shrink-0" aria-label="페이지">{nav}</nav>
       <a href="search.html" class="hidden sm:flex items-center gap-1.5 text-xs text-neutral-400 dark:text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300 px-2 py-1 rounded-lg transition-colors shrink-0">
         <span>🔍 검색</span>
-        <kbd class="hidden md:inline-block font-mono text-[10px] bg-stone-200/70 dark:bg-neutral-800 px-1.5 py-0.5 rounded border border-stone-300/50 dark:border-neutral-700">⌘K</kbd>
+        <kbd id="search-kbd" class="hidden md:inline-block font-mono text-[10px] bg-stone-200/70 dark:bg-neutral-800 px-1.5 py-0.5 rounded border border-stone-300/50 dark:border-neutral-700"></kbd>
       </a>
     </div>
     {tabs_nav}
