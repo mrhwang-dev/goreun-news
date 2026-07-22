@@ -1,8 +1,8 @@
-name: daily-briefing
+name: hourly-briefing
 
 on:
   schedule:
-    - cron: "0 22 * * *" # 매일 07:00 KST
+    - cron: "5 * * * *" # 매시간 (Actions 스케줄 지연을 감안해 5분에 실행)
   workflow_dispatch: {} # 수동 실행
 
 permissions:
@@ -23,12 +23,17 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install -r requirements.txt
+      # AI 요약 캐시 — 변화 없는 클러스터는 재호출하지 않아 시간당 비용 최소화
+      - uses: actions/cache@v4
+        with:
+          path: data/cache.json
+          key: briefing-cache-${{ github.run_id }}
+          restore-keys: briefing-cache-
       - name: Generate briefing
         run: python run.py
         env:
-          NAVER_CLIENT_ID: ${{ secrets.NAVER_CLIENT_ID }}
-          NAVER_CLIENT_SECRET: ${{ secrets.NAVER_CLIENT_SECRET }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          BRIEFING_MODEL: ${{ vars.BRIEFING_MODEL }}
       - uses: actions/upload-pages-artifact@v3
         with:
           path: site
