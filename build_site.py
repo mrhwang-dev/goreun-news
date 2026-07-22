@@ -112,19 +112,57 @@ tabs.forEach(function (tab) {
   });
 });
 
-// ── 속보 티커: 5초 간격 페이드 전환 (모션 최소화 설정 시 첫 항목 고정) ──
-var tickerItems = document.querySelectorAll(".ticker-item");
-if (tickerItems.length) {
-  var reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  tickerItems[0].classList.add("show");
-  if (!reducedMotion && tickerItems.length > 1) {
-    var tickerIdx = 0;
+// ── 속보 티커: 단일 요소 내용 교체(페이드) — 항목 겹침 원천 차단 ──
+var tickerLink = document.getElementById("ticker-link");
+var tickerDataEl = document.getElementById("ticker-data");
+if (tickerLink && tickerDataEl) {
+  var tickerData = [];
+  try { tickerData = JSON.parse(tickerDataEl.textContent); } catch (e) {}
+  var tickerReduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  var tickerIdx = 0;
+  function applyTicker(it) {
+    if (!it) return;
+    tickerLink.querySelector("time").textContent = it.time;
+    tickerLink.querySelector(".t-title").textContent = it.title;
+    tickerLink.querySelector(".t-outlet").textContent = it.outlet;
+    if (it.idx !== null && it.idx !== undefined) {
+      tickerLink.href = "#issue-" + it.idx;
+      tickerLink.dataset.jump = "issue-" + it.idx;
+      tickerLink.removeAttribute("target");
+    } else {
+      tickerLink.href = it.link;
+      tickerLink.dataset.jump = "";
+      tickerLink.target = "_blank";
+      tickerLink.rel = "noopener nofollow";
+    }
+  }
+  if (!tickerReduced && tickerData.length > 1) {
+    tickerLink.style.transition = "opacity 0.3s";
     setInterval(function () {
-      tickerItems[tickerIdx].classList.remove("show");
-      tickerIdx = (tickerIdx + 1) % tickerItems.length;
-      tickerItems[tickerIdx].classList.add("show");
+      tickerLink.style.opacity = "0";
+      setTimeout(function () {
+        tickerIdx = (tickerIdx + 1) % tickerData.length;
+        applyTicker(tickerData[tickerIdx]);
+        tickerLink.style.opacity = "1";
+      }, 300);
     }, 5000);
   }
+  tickerLink.addEventListener("click", function (e) {
+    var jumpTarget = tickerLink.dataset.jump;
+    if (!jumpTarget) return;
+    e.preventDefault();
+    var card = document.getElementById(jumpTarget);
+    if (!card) return;
+    if (card.hidden) {
+      var allTab = document.querySelector('.tab[data-value="전체"]');
+      if (allTab) allTab.click();
+    }
+    card.scrollIntoView({ behavior: tickerReduced ? "auto" : "smooth", block: "center" });
+    card.classList.remove("flash-ring");
+    void card.offsetWidth;
+    card.classList.add("flash-ring");
+    setTimeout(function () { card.classList.remove("flash-ring"); }, 2100);
+  });
 }
 
 // ── 오프라인 페일세이프: 서비스워커 캐시 + 경고 배너 ──
@@ -361,25 +399,6 @@ document.querySelectorAll(".summary-wrap").forEach(function (wrap) {
         }, 320);
       });
     }
-  });
-});
-
-// ── 속보 티커 클릭 → 해당 이슈 카드로 스크롤 + 2초 링 하이라이트 ──
-document.querySelectorAll(".ticker-jump").forEach(function (a) {
-  a.addEventListener("click", function (e) {
-    e.preventDefault();
-    var card = document.getElementById(a.dataset.target);
-    if (!card) return;
-    if (card.hidden) {
-      var allTab = document.querySelector('.tab[data-value="전체"]');
-      if (allTab) allTab.click();
-    }
-    var reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    card.scrollIntoView({ behavior: reduced ? "auto" : "smooth", block: "center" });
-    card.classList.remove("flash-ring");
-    void card.offsetWidth; // 애니메이션 재시작
-    card.classList.add("flash-ring");
-    setTimeout(function () { card.classList.remove("flash-ring"); }, 2100);
   });
 });
 
@@ -941,7 +960,11 @@ SCRAPBOOK_SCRIPT = """
 SERVICE_WORKER = """
 var CACHE = "goreun-v1";
 self.addEventListener("install", function (e) { self.skipWaiting(); });
-self.addEventListener("activate", function (e) { e.waitUntil(clients.claim()); });
+self.addEventListener("activate", function (e) {
+  e.waitUntil(caches.keys().then(function (keys) {
+    return Promise.all(keys.filter(function (k) { return k !== CACHE; }).map(function (k) { return caches.delete(k); }));
+  }).then(function () { return clients.claim(); }));
+});
 self.addEventListener("fetch", function (e) {
   if (e.request.method !== "GET") return;
   var url = new URL(e.request.url);
@@ -1052,7 +1075,7 @@ def _page(
         for key, label, href in (
             ("news", "뉴스", "index.html"),
             ("blindspot", "블라인드스팟", "blindspot.html"),
-            ("frame", "프레임", "frame.html"),
+            ("frame", "프레임 체크", "frame.html"),
             ("community", "커뮤니티", "community.html"),
             ("search", "검색", "search.html"),
             ("scrapbook", "스크랩북", "scrapbook.html"),
@@ -1154,25 +1177,31 @@ def _page(
 def _render_ticker(breaking: list[dict]) -> str:
     if not breaking:
         return ""
-    parts = []
-    for b in breaking:
-        idx = b.get("issue_index")
-        if idx is not None:
-            # 대응하는 이슈 카드가 있으면 카드로 스크롤 (JS에서 부드러운 이동 + 하이라이트)
-            attrs = f'href="#issue-{idx}" data-target="issue-{idx}" class="ticker-item ticker-jump absolute inset-0 flex items-center gap-2 truncate text-sm"'
-        else:
-            attrs = f'href="{_esc(b["link"])}" target="_blank" rel="noopener nofollow" class="ticker-item absolute inset-0 flex items-center gap-2 truncate text-sm"'
-        parts.append(
-            f"<a {attrs}>"
-            f'<time class="text-red-600 dark:text-red-400 text-xs font-semibold tabular-nums shrink-0">{_esc(b["time"])}</time>'
-            f'<span class="truncate">{_esc(b["title"])}</span>'
-            f'<span class="text-xs text-neutral-400 shrink-0">{_esc(b["outlet"])}</span></a>'
-        )
-    items = "".join(parts)
+    items = [
+        {
+            "time": b["time"],
+            "title": b["title"],
+            "outlet": b["outlet"],
+            "link": b["link"],
+            "idx": b.get("issue_index"),
+        }
+        for b in breaking
+    ]
+    payload = json.dumps(items, ensure_ascii=False).replace("</", "<\\/")
+    first = items[0]
+    if first["idx"] is not None:
+        href, jump, target = f"#issue-{first['idx']}", f"issue-{first['idx']}", ""
+    else:
+        href, jump, target = _esc(first["link"]), "", ' target="_blank" rel="noopener nofollow"'
     return f"""<div class="border-b border-stone-200 dark:border-neutral-700 bg-white dark:bg-neutral-800">
   <div class="max-w-[1440px] mx-auto px-5 py-2 flex items-center gap-3">
     <span class="text-red-600 dark:text-red-400 font-bold text-xs tracking-[0.12em] shrink-0">속보</span>
-    <div class="relative flex-1 h-6 overflow-hidden">{items}</div>
+    <a id="ticker-link" class="flex items-center gap-2 min-w-0 flex-1 text-sm" href="{href}" data-jump="{jump}"{target}>
+      <time class="text-red-600 dark:text-red-400 text-xs font-semibold tabular-nums shrink-0">{_esc(first["time"])}</time>
+      <span class="t-title truncate">{_esc(first["title"])}</span>
+      <span class="t-outlet text-xs text-neutral-400 shrink-0">{_esc(first["outlet"])}</span>
+    </a>
+    <script type="application/json" id="ticker-data">{payload}</script>
   </div>
 </div>"""
 
@@ -1387,13 +1416,18 @@ def _render_sidebar(policy: list[dict], blindspot: dict | None = None) -> str:
     </form>
     <div id="kw-list" class="flex flex-wrap gap-1.5 mt-2.5"></div>
   </section>"""
-    return f"""<aside class="flex flex-col gap-5 self-start lg:sticky lg:top-20">
-  {_render_blindspot(blindspot)}
-  <section class="rounded-xl border border-stone-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 p-5">
+    policy_panel = (
+        f"""<section class="rounded-xl border border-stone-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 p-5">
     <h2 class="text-sm font-bold mb-0.5">정책 브리핑</h2>
     <p class="text-[11px] text-neutral-400 mb-3">출처: 대한민국 정책브리핑(korea.kr) · 공공누리 제1유형</p>
     {items}
-  </section>
+  </section>"""
+        if policy
+        else ""
+    )
+    return f"""<aside class="flex flex-col gap-5 self-start lg:sticky lg:top-20">
+  {_render_blindspot(blindspot)}
+  {policy_panel}
   {top_viewed}
   {ad_slot("sidebar-1")}
   {newsletter_form}
@@ -1496,7 +1530,10 @@ def build(
         site_stamp=stamp,
     )
     (out_dir / "index.html").write_text(page, encoding="utf-8")
-    (out_dir / "sw.js").write_text(SERVICE_WORKER, encoding="utf-8")
+    (out_dir / "sw.js").write_text(
+        SERVICE_WORKER.replace("goreun-v1", f"goreun-{now.strftime('%Y%m%d%H')}"),
+        encoding="utf-8",
+    )
 
     # PWA: 홈 화면 설치용 매니페스트 + 아이콘
     build_icon(out_dir / "icon-512.png")
