@@ -24,14 +24,33 @@ BACKOFF_ATTEMPTS = 3
 BACKOFF_BASE_SECONDS = 1.0
 
 
+_NON_RETRYABLE_MARKERS = (
+    "404",
+    "no longer available",
+    "API key not valid",
+    "invalid_request_error",
+    "permission",
+)
+
+
+def _is_retryable(error: Exception) -> bool:
+    """레이트리밋(429)·타임아웃·5xx만 재시도. 4xx 계열은 즉시 폴백."""
+    msg = str(error)
+    if "429" in msg or "rate" in msg.lower():
+        return True
+    return not any(marker in msg for marker in _NON_RETRYABLE_MARKERS)
+
+
 def _with_backoff(label: str, fn):
-    """지수 백오프 재시도. 마지막 시도까지 실패하면 예외를 다시 던진다."""
+    """지수 백오프 재시도. 재시도 불가 오류나 마지막 실패는 예외를 다시 던진다."""
     last_error: Exception | None = None
     for attempt in range(BACKOFF_ATTEMPTS):
         try:
             return fn()
         except Exception as e:  # 레이트리밋·타임아웃·5xx 등
             last_error = e
+            if not _is_retryable(e) or attempt == BACKOFF_ATTEMPTS - 1:
+                break
             wait = BACKOFF_BASE_SECONDS * (2**attempt)
             print(f"[{label}] 시도 {attempt + 1}/{BACKOFF_ATTEMPTS} 실패: {e} — {wait:.0f}s 후 재시도")
             time.sleep(wait)
