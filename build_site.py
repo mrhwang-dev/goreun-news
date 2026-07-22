@@ -475,6 +475,7 @@ function authUser() {
 function loadAccounts() {
   try { return JSON.parse(localStorage.getItem(ACCOUNTS_KEY)) || {}; } catch (e) { return {}; }
 }
+function hasAccount(accounts, id) { return Object.prototype.hasOwnProperty.call(accounts, id); }
 function sha256(text) {
   return crypto.subtle.digest("SHA-256", new TextEncoder().encode(text)).then(function (buf) {
     return Array.from(new Uint8Array(buf)).map(function (b) { return b.toString(16).padStart(2, "0"); }).join("");
@@ -486,7 +487,6 @@ function setAuthMode(mode) {
   authMode = mode;
   var isSignup = mode === "signup";
   document.getElementById("login-nick").hidden = !isSignup;
-  document.getElementById("login-nick").required = isSignup;
   document.getElementById("login-submit").textContent = isSignup ? "가입하고 시작" : "로그인";
   document.getElementById("auth-tab-login").setAttribute("aria-selected", String(!isSignup));
   document.getElementById("auth-tab-signup").setAttribute("aria-selected", String(isSignup));
@@ -547,25 +547,29 @@ if (loginForm) {
     var err = document.getElementById("login-error");
     function fail(msg) { err.textContent = msg; err.hidden = false; }
     if (!id || !pw) return;
+    if (!(window.crypto && crypto.subtle)) { fail("보안 연결(https)에서만 로그인할 수 있습니다."); return; }
     sha256("goreun_salt_v1:" + id + ":" + pw).then(function (hash) {
       var accounts = loadAccounts();
+      var welcome;
       if (authMode === "signup") {
-        if (accounts[id]) { fail("이미 존재하는 아이디입니다. 로그인 탭을 이용하세요."); return; }
+        if (hasAccount(accounts, id)) { fail("이미 존재하는 아이디입니다. 로그인 탭을 이용하세요."); return; }
         var nick = document.getElementById("login-nick").value.trim() || id;
         accounts[id] = { nick: nick, hash: hash };
         localStorage.setItem(ACCOUNTS_KEY, JSON.stringify(accounts));
         localStorage.setItem(AUTH_KEY, JSON.stringify({ id: id, name: nick }));
+        welcome = nick;
       } else {
-        var account = accounts[id];
+        var account = hasAccount(accounts, id) ? accounts[id] : null;
         if (!account || account.hash !== hash) { fail("아이디 또는 비밀번호가 일치하지 않습니다."); return; }
         localStorage.setItem(AUTH_KEY, JSON.stringify({ id: id, name: account.nick }));
+        welcome = account.nick;
       }
       closeLogin();
       renderAuth();
       if (typeof renderScrapGate === "function") renderScrapGate();
-      toast((authUser().name) + " 님, 환영합니다");
+      toast(welcome + " 님, 환영합니다");
       if (loginCallback) { var cb = loginCallback; loginCallback = null; cb(); }
-    });
+    }).catch(function () { fail("저장 공간을 사용할 수 없어 로그인에 실패했습니다."); });
   });
   document.getElementById("login-close").addEventListener("click", closeLogin);
 }
@@ -573,7 +577,8 @@ renderAuth();
 
 // ── 첫 방문 온보딩 가이드 (다단계 기능 소개) ──
 var obModal = document.getElementById("onboard-modal");
-if (obModal && !localStorage.getItem("goreun_onboarded")) {
+function obSeen() { try { return localStorage.getItem("goreun_onboarded"); } catch (e) { return "1"; } }
+if (obModal && !obSeen()) {
   var OB_STEPS = [
     { e: "⚖️", t: "고른뉴스에 오신 것을 환영합니다", d: "__FEED_COUNT__개 언론사의 헤드라인을 교차 확인해, 감정적 표현을 걷어낸 중립 브리핑을 매시간 자동으로 만듭니다." },
     { e: "🎨", t: "성향 스펙트럼", d: "각 이슈를 어떤 성향의 매체들이 보도했는지 진보-중도-보수 분포 바로 보여줍니다. 카드를 펼치면 매체별 원문 제목을 시간순 타임라인으로 비교할 수 있어요." },
@@ -600,8 +605,8 @@ if (obModal && !localStorage.getItem("goreun_onboarded")) {
     });
   }
   function obClose() {
-    localStorage.setItem("goreun_onboarded", "1");
-    obModal.hidden = true;
+    obModal.hidden = true;  // 저장 실패와 무관하게 항상 먼저 닫아 화면 잠금 방지
+    try { localStorage.setItem("goreun_onboarded", "1"); } catch (e) {}
   }
   document.getElementById("ob-next").addEventListener("click", function () {
     if (obIdx === OB_STEPS.length - 1) { obClose(); return; }
@@ -697,14 +702,29 @@ function wireNewsletterForm(form, doneEl) {
     if (!action || !entry) { toast("구독 폼이 아직 연결되지 않았습니다"); return; }
     var body = new FormData();
     body.append(entry, email);
-    body.append("_subject", "고른뉴스 뉴스레터 구독 신청");
-    body.append("_captcha", "false");
-    body.append("_template", "table");
-    fetch(action, { method: "POST", mode: "no-cors", body: body }).finally(function () {
+    var isFormSubmit = action.indexOf("formsubmit") >= 0;
+    if (isFormSubmit) {
+      // FormSubmit 전용 제어 필드 (다른 백엔드로 교체 시 자동 생략)
+      body.append("_subject", "고른뉴스 뉴스레터 구독 신청");
+      body.append("_captcha", "false");
+      body.append("_template", "table");
+    }
+    function ok() {
       form.hidden = true;
       if (doneEl) doneEl.hidden = false;
-      localStorage.setItem("goreun_nl_subscribed", "1");
-    });
+      try { localStorage.setItem("goreun_nl_subscribed", "1"); } catch (e) {}
+    }
+    function nope() { toast("구독 신청에 실패했습니다. 잠시 후 다시 시도해 주세요."); }
+    if (isFormSubmit) {
+      // /ajax/ 엔드포인트는 CORS+JSON을 지원하므로 실제 성공 여부를 확인한다
+      fetch(action, { method: "POST", headers: { "Accept": "application/json" }, body: body })
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (d) { if (d && (d.success === "true" || d.success === true)) ok(); else nope(); })
+        .catch(nope);
+    } else {
+      // 응답을 확인할 수 없는 백엔드(no-cors)는 낙관적 처리
+      fetch(action, { method: "POST", mode: "no-cors", body: body }).then(ok).catch(nope);
+    }
   });
 }
 wireNewsletterForm(
@@ -1394,7 +1414,7 @@ def _page(
     <p class="text-xs text-neutral-400 mb-3 leading-relaxed">계정 정보는 이 기기(브라우저)에만 저장되며 서버로 전송되지 않습니다. 비밀번호는 해시로만 보관됩니다.</p>
     <form id="login-form" class="flex flex-col gap-2">
       <input id="login-id" type="text" required maxlength="20" autocomplete="username" placeholder="아이디" class="rounded-lg border border-stone-300 dark:border-neutral-600 bg-stone-50 dark:bg-neutral-900 px-3 py-2 text-sm placeholder:text-neutral-400 focus:outline-none focus:border-blue-500">
-      <input id="login-nick" type="text" maxlength="16" placeholder="닉네임" hidden class="rounded-lg border border-stone-300 dark:border-neutral-600 bg-stone-50 dark:bg-neutral-900 px-3 py-2 text-sm placeholder:text-neutral-400 focus:outline-none focus:border-blue-500">
+      <input id="login-nick" type="text" maxlength="16" placeholder="닉네임 (선택 — 비우면 아이디 사용)" hidden class="rounded-lg border border-stone-300 dark:border-neutral-600 bg-stone-50 dark:bg-neutral-900 px-3 py-2 text-sm placeholder:text-neutral-400 focus:outline-none focus:border-blue-500">
       <input id="login-pw" type="password" required maxlength="32" autocomplete="current-password" placeholder="비밀번호" class="rounded-lg border border-stone-300 dark:border-neutral-600 bg-stone-50 dark:bg-neutral-900 px-3 py-2 text-sm placeholder:text-neutral-400 focus:outline-none focus:border-blue-500">
       <p id="login-error" hidden class="text-xs text-red-500"></p>
       <button type="submit" id="login-submit" class="rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium py-2 transition-colors">로그인</button>
@@ -1849,7 +1869,7 @@ def build(
     build_community_page(community, out_dir, generated_at, now, updated, stamp)
     build_scrapbook_page(out_dir, generated_at, now, updated, stamp)
     build_docs(out_dir, generated_at, updated, stamp)
-    build_newsletter_page(briefing, out_dir, now)
+    build_newsletter_page(briefing, out_dir, now, archive_stamps[0] if archive_stamps else None)
     build_blindspot_page(briefing, out_dir, generated_at, updated, stamp, snapshots or [], now)
     build_frame_page(briefing, out_dir, generated_at, updated, stamp, snapshots or [], now)
     build_seo_files(briefing, out_dir, punycode_domain, now, archive_stamps or [])
@@ -2408,18 +2428,22 @@ def build_docs(out_dir: Path, generated_at: str, updated: str, stamp: str) -> No
     _build_doc(out_dir, "privacy.html", "개인정보처리방침", PRIVACY_BODY, generated_at, updated, stamp, jsonld_type="WebPage")
 
 
-def build_newsletter_page(briefing: dict, out_dir: Path, now: datetime) -> None:
+def build_newsletter_page(briefing: dict, out_dir: Path, now: datetime, stamp: str | None) -> None:
     """뉴스레터 미리보기 — 이메일 호환 인라인 스타일 단일 컬럼 (발송 템플릿 겸용)."""
     issues = briefing.get("issues", [])
     top3 = issues[:3]
     bs = briefing.get("blindspot") or {}
     bs_pick = (bs.get("progressive_missing") or bs.get("conservative_missing") or [None])[0]
-    frame_pick = next((i for i in issues if i.get("framing", {}).get("note")), None)
+    frame_pick = next((i for i in issues if (i.get("framing") or {}).get("note")), None)
     policy = (briefing.get("policy") or [None])[0]
 
     def _sec(title, inner):
         return (f'<tr><td style="padding:18px 24px 6px;font-size:13px;font-weight:700;'
                 f'color:#2563eb;letter-spacing:1px;">{title}</td></tr>{inner}')
+
+    def _issue_href(i):
+        return (f"https://{config.SITE_DOMAIN}/archive/{stamp}/#issue-{i}" if stamp
+                else f"https://{config.SITE_DOMAIN}/#issue-{i}")
 
     rows = ""
     for i, issue in enumerate(top3):
@@ -2427,7 +2451,7 @@ def build_newsletter_page(briefing: dict, out_dir: Path, now: datetime) -> None:
                  f'<div style="font-size:16px;font-weight:700;line-height:1.4;color:#1c1c1e;">{i+1}. {_esc(issue["label"])}</div>'
                  f'<div style="font-size:13px;line-height:1.7;color:#55555a;margin-top:4px;">{_esc(issue["summary"])}</div>'
                  f'<div style="font-size:12px;color:#8a8a90;margin-top:3px;">{issue.get("outlet_count",0)}개 매체 보도 · '
-                 f'<a href="https://{config.SITE_DOMAIN}/#issue-{i}" style="color:#2563eb;">자세히 보기</a></div>'
+                 f'<a href="{_issue_href(i)}" style="color:#2563eb;">자세히 보기</a></div>'
                  f'</td></tr>')
     body_sections = _sec("오늘의 세 가지", rows)
     if bs_pick:

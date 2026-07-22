@@ -20,14 +20,23 @@ import re
 import smtplib
 import ssl
 import sys
+import time
+import urllib.error
 import urllib.request
 from datetime import datetime, timedelta, timezone
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.utils import formataddr
 
+try:
+    import config
+    _DOMAIN = config.SITE_DOMAIN
+except Exception:  # config는 발송 잡의 필수 의존성이 아님
+    _DOMAIN = "goreunnews.cloud"
+
 KST = timezone(timedelta(hours=9))
-NEWSLETTER_URL = "https://goreunnews.cloud/newsletter.html"
+NEWSLETTER_URL = f"https://{_DOMAIN}/newsletter.html"
+_UA = "GoreunNews-Newsletter/1.0 (+https://goreunnews.cloud)"
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 
@@ -40,9 +49,19 @@ def parse_recipients(raw: str) -> list[str]:
     return list(seen)
 
 
-def fetch_html(url: str) -> str:
-    with urllib.request.urlopen(url, timeout=30) as resp:
-        return resp.read().decode("utf-8")
+def fetch_html(url: str, retries: int = 3) -> str:
+    """뉴스레터 HTML을 가져온다. 일시 오류는 지수 백오프로 재시도."""
+    last = None
+    for attempt in range(retries):
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": _UA})
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                return resp.read().decode("utf-8")
+        except (urllib.error.URLError, OSError) as e:
+            last = e
+            if attempt < retries - 1:
+                time.sleep(2 ** attempt)
+    raise last
 
 
 def main() -> int:
@@ -57,8 +76,22 @@ def main() -> int:
         print("NEWSLETTER_RECIPIENTS 비어 있음 — 발송 건너뜀")
         return 0
 
-    html = fetch_html(NEWSLETTER_URL)
     now = datetime.now(KST)
+    try:
+        html = fetch_html(NEWSLETTER_URL)
+    except Exception as e:  # Pages/DNS 장애 등 — 잡을 빨간불로 만들지 않고 건너뜀
+        print(f"뉴스레터 페이지를 가져오지 못해 발송 건너뜀: {e}")
+        return 0
+
+    # 신선도·형태 검사: 오늘 날짜가 본문에 없으면(밤새 빌드 실패로 stale) 발송 중단
+    today_kr = f"{now.year}년 {now.month:02d}월 {now.day:02d}일"
+    if "고른뉴스" not in html or "<table" not in html:
+        print("가져온 페이지가 뉴스레터 형식이 아님 — 발송 건너뜀")
+        return 0
+    if today_kr not in html:
+        print(f"페이지가 오늘({today_kr}) 브리핑이 아님(밤새 빌드 지연 추정) — 발송 건너뜀")
+        return 0
+
     subject = f"☀️ 고른뉴스 아침 브리핑 — {now.month}월 {now.day}일"
 
     msg = MIMEMultipart("alternative")
