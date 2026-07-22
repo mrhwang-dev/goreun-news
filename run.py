@@ -10,13 +10,47 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import subprocess
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import config
-from build_site import build
+import build_site
+from build_site import build, build_archive_pages
 
 ROOT = Path(__file__).resolve().parent
+
+ARCHIVE_KEEP = 72  # 사이트에 렌더링할 최근 스냅샷 수 (3일치)
+
+
+def build_tailwind_css(site_dir: Path) -> None:
+    """빌드 타임에 Tailwind CLI로 정적 CSS 생성. 실패 시 CDN 폴백 주입."""
+    try:
+        subprocess.run(
+            ["npx", "--yes", "tailwindcss@3.4.17",
+             "-c", "tailwind.config.js", "-i", "tailwind.input.css",
+             "-o", str(site_dir / "tailwind.css"), "--minify"],
+            check=True, cwd=ROOT, capture_output=True, timeout=420,
+        )
+        print("Tailwind 정적 CSS 생성 완료")
+        return
+    except Exception as e:
+        print(f"[경고] Tailwind CLI 실패 — CDN 폴백 주입: {e}")
+    custom = "\n".join(
+        line
+        for line in (ROOT / "tailwind.input.css").read_text(encoding="utf-8").splitlines()
+        if not line.startswith("@tailwind")
+    )
+    fallback = (
+        '<script src="https://cdn.tailwindcss.com"></script>'
+        '<script>tailwind.config={darkMode:"media"}</script>'
+        f'<style type="text/tailwindcss">{custom}</style>'
+    )
+    for html_file in site_dir.rglob("*.html"):
+        text = html_file.read_text(encoding="utf-8")
+        text = re.sub(r'<link rel="stylesheet" href="[./]*tailwind\.css">', fallback, text)
+        html_file.write_text(text, encoding="utf-8")
 
 BREAKING_RE = re.compile(r"\[\s*(속보|1보|긴급)\s*\]")
 BREAKING_MAX_AGE_HOURS = 6
@@ -79,9 +113,10 @@ def build_briefing() -> dict:
         if not meta:
             continue
         outlets = {m["outlet"] for m in cluster}
-        bias = {"progressive": 0, "moderate": 0, "conservative": 0}
+        # 미분류 매체는 '중도'로 뭉개지 않고 별도 집계 (정직한 스펙트럼)
+        bias = {"progressive": 0, "moderate": 0, "conservative": 0, "unknown": 0}
         for outlet in outlets:
-            bias[config.OUTLET_BIAS.get(outlet, "moderate")] += 1
+            bias[config.OUTLET_BIAS.get(outlet) or "unknown"] += 1
         issues_all.append(
             {
                 **meta,
@@ -153,6 +188,7 @@ def main() -> None:
     parser.add_argument("--mock", action="store_true", help="예시 데이터로 사이트만 생성")
     args = parser.parse_args()
 
+    snapshots: list[tuple[str, dict]] = []
     if args.mock:
         briefing = json.loads(
             (ROOT / "data" / "mock_briefing.json").read_text(encoding="utf-8")
@@ -172,7 +208,31 @@ def main() -> None:
             print(f"[경고] 커뮤니티 단계 실패 — 건너뜀: {e}")
             community = []
 
-    out_path = build(briefing, community, ROOT / "site")
+        # 아카이브: 현재 브리핑을 저장소 archive/에 스냅샷 (워크플로우가 커밋)
+        kst = timezone(timedelta(hours=9))
+        stamp = datetime.now(kst).strftime("%Y-%m-%d-%H")
+        archive_dir = ROOT / "archive"
+        archive_dir.mkdir(exist_ok=True)
+        (archive_dir / f"{stamp}.json").write_text(
+            json.dumps(briefing, ensure_ascii=False), encoding="utf-8"
+        )
+        for f in sorted(archive_dir.glob("*.json"), reverse=True)[:ARCHIVE_KEEP]:
+            try:
+                snapshots.append((f.stem, json.loads(f.read_text(encoding="utf-8"))))
+            except json.JSONDecodeError:
+                continue
+        # 공유·RSS 영구 링크는 이번 시각의 스냅샷을 가리킨다
+        punycode = config.SITE_DOMAIN.encode("idna").decode()
+        build_site.set_share_base(f"https://{punycode}/archive/{stamp}/")
+
+    out_path = build(
+        briefing, community, ROOT / "site",
+        archive_stamps=[s for s, _ in snapshots],
+    )
+    if snapshots:
+        build_archive_pages(snapshots, ROOT / "site", datetime.now(ZoneInfo("Asia/Seoul")))
+        print(f"아카이브 페이지 {len(snapshots)}개 렌더링")
+    build_tailwind_css(ROOT / "site")
     (ROOT / "site" / "briefing.json").write_text(
         json.dumps(briefing, ensure_ascii=False, indent=2), encoding="utf-8"
     )

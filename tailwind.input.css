@@ -1,0 +1,50 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── 고른뉴스 커스텀 컴포넌트 (build_site.py 마크업과 짝) ── */
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { scrollbar-width: none; }
+.tab[aria-selected="true"] { @apply bg-neutral-900 text-stone-50 border-neutral-900 dark:bg-neutral-100 dark:text-neutral-900 dark:border-neutral-100; }
+.tab[aria-selected="true"] .badge { @apply bg-white/20 dark:bg-black/10; }
+details[open] .tri { transform: rotate(180deg); }
+.tri { transition: transform 0.15s; }
+/* 티커: 숨은 항목이 클릭을 가로채지 않도록 pointer-events/visibility 제어 */
+.ticker-item { opacity: 0; visibility: hidden; pointer-events: none; transition: opacity 0.5s, visibility 0.5s; }
+.ticker-item.show { opacity: 1; visibility: visible; pointer-events: auto; }
+/* 글자 크기 단계 (가/가+) — 기본은 1단계 */
+:root[data-fs="0"] .fs-t { font-size: 14px; }
+:root[data-fs="0"] .fs-p { font-size: 12.5px; }
+:root[data-fs="2"] .fs-t { font-size: 17px; }
+:root[data-fs="2"] .fs-p { font-size: 15.5px; }
+#site-header { transition: transform 0.3s; }
+/* AI 요약 3줄 클램프 + 하단 페이드, 클릭 시 펼침 */
+.summary-wrap p { @apply line-clamp-3; }
+.summary-wrap.open p { -webkit-line-clamp: unset; }
+.summary-wrap .fade { @apply absolute bottom-0 inset-x-0 h-5 bg-gradient-to-t from-white dark:from-neutral-800 to-transparent pointer-events-none transition-opacity; }
+.summary-wrap.open .fade, .summary-wrap.no-clamp .fade { opacity: 0; }
+.summary-wrap.no-clamp { cursor: default; }
+/* 무한 스크롤: 아직 공개되지 않은 카드 */
+.not-revealed { display: none; }
+/* 히어로 카드: 현재 보기(전체/분야)의 1위 이슈를 크게 — JS가 .is-hero 부여 */
+.is-hero { grid-column: 1 / -1; border-top-width: 4px; border-radius: 1rem; padding: 1.75rem; }
+.is-hero h3 { font-size: 1.7rem; line-height: 1.25; font-weight: 800; letter-spacing: -0.02em; }
+@media (min-width: 1024px) { .is-hero h3 { font-size: 2rem; } }
+.is-hero .summary-wrap { cursor: default; }
+.is-hero .summary-wrap p { -webkit-line-clamp: unset; font-size: 0.95rem; line-height: 1.7; max-width: 62ch; }
+.is-hero .summary-wrap .fade { opacity: 0; }
+.is-hero .bias-inline { display: block; }
+.is-hero .hero-badge { display: inline-flex; }
+/* 히어로는 성향 바를 상시 노출하므로 펼침 본문 안의 중복 바는 숨김 */
+.is-hero .headlines-body > [aria-label="보도 매체 성향 분포"] { display: none; }
+.is-hero .headlines-body > ul { margin-top: 0; }
+/* 티커 → 카드 도착 하이라이트 (2초간 은은한 블루 링) */
+.flash-ring { animation: flashRing 1s ease-in-out 2; }
+@keyframes flashRing {
+  0%, 100% { box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.5); }
+  50% { box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.15); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ticker-item, .tri, #site-header, .summary-wrap .fade { transition: none; }
+  .flash-ring { animation: none; box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.5); }
+}

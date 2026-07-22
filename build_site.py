@@ -40,53 +40,6 @@ FAVICON_SVG = "data:image/svg+xml," + urllib.parse.quote(
     "</svg>"
 )
 
-CUSTOM_STYLE = """
-.no-scrollbar::-webkit-scrollbar { display: none; }
-.no-scrollbar { scrollbar-width: none; }
-.tab[aria-selected="true"] { @apply bg-neutral-900 text-stone-50 border-neutral-900 dark:bg-neutral-100 dark:text-neutral-900 dark:border-neutral-100; }
-.tab[aria-selected="true"] .badge { @apply bg-white/20 dark:bg-black/10; }
-details[open] .tri { transform: rotate(180deg); }
-.tri { transition: transform 0.15s; }
-/* 티커: 숨은 항목이 클릭을 가로채지 않도록 pointer-events/visibility 제어 */
-.ticker-item { opacity: 0; visibility: hidden; pointer-events: none; transition: opacity 0.5s, visibility 0.5s; }
-.ticker-item.show { opacity: 1; visibility: visible; pointer-events: auto; }
-/* 글자 크기 단계 (가/가+) — 기본은 1단계 */
-:root[data-fs="0"] .fs-t { font-size: 14px; }
-:root[data-fs="0"] .fs-p { font-size: 12.5px; }
-:root[data-fs="2"] .fs-t { font-size: 17px; }
-:root[data-fs="2"] .fs-p { font-size: 15.5px; }
-#site-header { transition: transform 0.3s; }
-/* AI 요약 3줄 클램프 + 하단 페이드, 클릭 시 펼침 */
-.summary-wrap p { @apply line-clamp-3; }
-.summary-wrap.open p { -webkit-line-clamp: unset; }
-.summary-wrap .fade { @apply absolute bottom-0 inset-x-0 h-5 bg-gradient-to-t from-white dark:from-neutral-800 to-transparent pointer-events-none transition-opacity; }
-.summary-wrap.open .fade, .summary-wrap.no-clamp .fade { opacity: 0; }
-.summary-wrap.no-clamp { cursor: default; }
-/* 무한 스크롤: 아직 공개되지 않은 카드 */
-.not-revealed { display: none; }
-/* 히어로 카드: 현재 보기(전체/분야)의 1위 이슈를 크게 — JS가 .is-hero 부여 */
-.is-hero { grid-column: 1 / -1; border-top-width: 4px; border-radius: 1rem; padding: 1.75rem; }
-.is-hero h3 { font-size: 1.7rem; line-height: 1.25; font-weight: 800; letter-spacing: -0.02em; }
-@media (min-width: 1024px) { .is-hero h3 { font-size: 2rem; } }
-.is-hero .summary-wrap { cursor: default; }
-.is-hero .summary-wrap p { -webkit-line-clamp: unset; font-size: 0.95rem; line-height: 1.7; max-width: 62ch; }
-.is-hero .summary-wrap .fade { opacity: 0; }
-.is-hero .bias-inline { display: block; }
-.is-hero .hero-badge { display: inline-flex; }
-/* 히어로는 성향 바를 상시 노출하므로 펼침 본문 안의 중복 바는 숨김 */
-.is-hero .headlines-body > [aria-label="보도 매체 성향 분포"] { display: none; }
-.is-hero .headlines-body > ul { margin-top: 0; }
-/* 티커 → 카드 도착 하이라이트 (2초간 은은한 블루 링) */
-.flash-ring { animation: flashRing 1s ease-in-out 2; }
-@keyframes flashRing {
-  0%, 100% { box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.5); }
-  50% { box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.15); }
-}
-@media (prefers-reduced-motion: reduce) {
-  .ticker-item, .tri, #site-header, .summary-wrap .fade { transition: none; }
-  .flash-ring { animation: none; box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.5); }
-}
-"""
 
 def ad_slot(unit_id: str) -> str:
     """광고 슬롯 모듈 — CLS 방지를 위해 min-h 고정 + 로드 전 스켈레톤 배경.
@@ -121,6 +74,14 @@ BIAS_BAR_CLASSES = {
     "moderate": "bg-neutral-400",
     "conservative": "bg-red-500",
 }
+
+# 공유·RSS 영구 링크의 기준 URL (아카이브 스냅샷). run.py가 설정.
+_SHARE_BASE: str | None = None
+
+
+def set_share_base(url: str | None) -> None:
+    global _SHARE_BASE
+    _SHARE_BASE = url
 
 BASE_SCRIPT = """
 // ── 탭 필터 (뉴스: data-cat / 커뮤니티: data-src) ──
@@ -352,8 +313,8 @@ document.querySelectorAll(".scrap-btn").forEach(function (btn) {
 // ── 공유 (모바일: OS 공유 시트 / 데스크톱: 클립보드 복사 + 토스트) ──
 document.querySelectorAll(".share-btn").forEach(function (btn) {
   btn.addEventListener("click", function () {
-    var url = location.origin + location.pathname +
-      (btn.dataset.anchor ? "#" + btn.dataset.anchor : "");
+    var url = btn.dataset.url || (location.origin + location.pathname +
+      (btn.dataset.anchor ? "#" + btn.dataset.anchor : ""));
     if (navigator.share) {
       navigator.share({ title: btn.dataset.title, text: btn.dataset.text, url: url })
         .catch(function () {});
@@ -641,19 +602,20 @@ SCRAPBOOK_SCRIPT = """
     ["progressive", "진보", "#3b82f6"],
     ["moderate", "중도", "#9ca3af"],
     ["conservative", "보수", "#ef4444"],
+    ["unknown", "분류 없음", "#d6d3d1"],
   ];
 
   // 스크랩한 뉴스의 매체 성향 비율 미니 대시보드 (conic-gradient 도넛)
   function renderBiasDash(scraps) {
     var sec = document.getElementById("bias-dash");
     if (!sec) return;
-    var counts = { progressive: 0, moderate: 0, conservative: 0 };
+    var counts = { progressive: 0, moderate: 0, conservative: 0, unknown: 0 };
     scraps.filter(function (s) { return s.type === "issue"; }).forEach(function (s) {
       (s.headlines || []).forEach(function (h) {
-        counts[OUTLET_BIAS[h.outlet] || "moderate"]++;
+        counts[OUTLET_BIAS[h.outlet] || "unknown"]++;
       });
     });
-    var total = counts.progressive + counts.moderate + counts.conservative;
+    var total = counts.progressive + counts.moderate + counts.conservative + counts.unknown;
     sec.hidden = total === 0;
     if (!total) return;
     var stops = [];
@@ -807,7 +769,7 @@ def _page(
     *, title: str, active: str, generated_at: str, feed: str,
     updated_label: str, head_extra: str, tabs_html: str, after_header: str,
     main_html: str, footer_notes: list[str], site_stamp: str, extra_script: str = "",
-    banner_html: str = "",
+    banner_html: str = "", asset_prefix: str = "",
 ) -> str:
     nav = "".join(
         f'<a href="{href}" class="px-2 py-1 rounded-lg text-sm '
@@ -844,12 +806,10 @@ def _page(
 <meta name="description" content="여러 언론사의 헤드라인을 교차 확인해 매시간 정리하는 중립 뉴스 브리핑">
 {head_extra}
 <link rel="icon" href="{FAVICON_SVG}">
-<link rel="manifest" href="site.webmanifest">
-<link rel="apple-touch-icon" href="icon-512.png">
+<link rel="manifest" href="{asset_prefix}site.webmanifest">
+<link rel="apple-touch-icon" href="{asset_prefix}icon-512.png">
 <meta name="theme-color" content="#2563eb">
-<script src="https://cdn.tailwindcss.com"></script>
-<script>tailwind.config = {{ darkMode: "media" }}</script>
-<style type="text/tailwindcss">{CUSTOM_STYLE}</style>
+<link rel="stylesheet" href="{asset_prefix}tailwind.css">
 <!-- AdSense 승인 후 사이트 확인/광고 스크립트를 여기에 붙여넣으세요 -->
 </head>
 <body class="bg-stone-50 dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 antialiased" style='font-family:"Pretendard Variable",Pretendard,-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Noto Sans KR","Malgun Gothic",sans-serif'>
@@ -926,27 +886,40 @@ def _render_ticker(breaking: list[dict]) -> str:
 
 
 def _render_bias_bar(bias: dict | None) -> str:
+    """성향 분포 바. 미분류 매체는 '중도'로 뭉개지 않고 '분류 없음'으로 정직하게 표기."""
     if not bias:
         return ""
-    total = sum(bias.values())
-    if total == 0:
+    classified_total = sum(bias.get(k, 0) for k, _ in BIAS_LABELS)
+    unknown = bias.get("unknown", 0)
+    if classified_total == 0 and unknown == 0:
         return ""
     dot_colors = {"progressive": "#3b82f6", "moderate": "#9ca3af", "conservative": "#ef4444"}
     segments, labels = [], []
     for key, label in BIAS_LABELS:
         n = bias.get(key, 0)
-        if n:
+        if n and classified_total:
             segments.append(
-                f'<span class="{BIAS_BAR_CLASSES[key]}" style="width:{n / total * 100:.0f}%"></span>'
+                f'<span class="{BIAS_BAR_CLASSES[key]}" style="width:{n / classified_total * 100:.0f}%"></span>'
             )
         labels.append(
             f'<span class="inline-flex items-center gap-1">'
             f'<span class="w-1.5 h-1.5 rounded-full" style="background:{dot_colors[key]}"></span>'
             f"{label} {n}</span>"
         )
+    if unknown:
+        labels.append(
+            f'<span class="inline-flex items-center gap-1">'
+            f'<span class="w-1.5 h-1.5 rounded-full bg-stone-300 dark:bg-neutral-600"></span>'
+            f"분류 없음 {unknown}</span>"
+        )
+    bar = (
+        f'<div class="flex h-1.5 rounded-full overflow-hidden bg-stone-200 dark:bg-neutral-700">{"".join(segments)}</div>'
+        if classified_total
+        else '<p class="text-[10px] text-neutral-400">성향 분류 정보가 있는 매체 없음</p>'
+    )
     return f"""<div class="mb-2.5" aria-label="보도 매체 성향 분포">
-  <div class="flex h-1.5 rounded-full overflow-hidden bg-stone-200 dark:bg-neutral-700">{"".join(segments)}</div>
-  <div class="flex gap-3 text-[10px] text-neutral-400 mt-1.5">{"".join(labels)}</div>
+  {bar}
+  <div class="flex flex-wrap gap-3 text-[10px] text-neutral-400 mt-1.5">{"".join(labels)}</div>
 </div>"""
 
 
@@ -1008,7 +981,7 @@ def _render_issue(issue: dict, index: int) -> str:
         </summary>
       </details>
       <span class="flex-1"></span>
-      <button type="button" class="share-btn shrink-0 rounded-lg border border-stone-200 dark:border-neutral-600 px-3 py-1.5 text-xs text-neutral-500 dark:text-neutral-400 hover:text-blue-600 hover:border-blue-500" data-anchor="{anchor}" data-title="{_esc(issue["label"])}" data-text="{_esc(issue["summary"])}">공유</button>
+      <button type="button" class="share-btn shrink-0 rounded-lg border border-stone-200 dark:border-neutral-600 px-3 py-1.5 text-xs text-neutral-500 dark:text-neutral-400 hover:text-blue-600 hover:border-blue-500" data-anchor="{anchor}"{f' data-url="{_esc(_SHARE_BASE)}#{anchor}"' if _SHARE_BASE else ""} data-title="{_esc(issue["label"])}" data-text="{_esc(issue["summary"])}">공유</button>
       <button type="button" class="imgsave-btn shrink-0 rounded-lg border border-stone-200 dark:border-neutral-600 px-3 py-1.5 text-xs text-neutral-500 dark:text-neutral-400 hover:text-blue-600 hover:border-blue-500" title="인스타그램용 정사각 이미지로 저장">이미지 저장</button>
     </div>
     <div class="headlines-body mt-3" hidden>
@@ -1055,7 +1028,10 @@ def _render_sidebar(policy: list[dict]) -> str:
 </aside>"""
 
 
-def build(briefing: dict, community: list[dict], out_dir: Path) -> Path:
+def build(
+    briefing: dict, community: list[dict], out_dir: Path,
+    archive_stamps: list[str] | None = None,
+) -> Path:
     now = datetime.now(ZoneInfo("Asia/Seoul"))
     generated_at = briefing.get("generated_at", now.isoformat())
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -1161,15 +1137,87 @@ def build(briefing: dict, community: list[dict], out_dir: Path) -> Path:
 
     build_community_page(community, out_dir, generated_at, now, updated, stamp)
     build_scrapbook_page(out_dir, generated_at, now, updated, stamp)
-    build_seo_files(briefing, out_dir, punycode_domain, now)
+    build_seo_files(briefing, out_dir, punycode_domain, now, archive_stamps or [])
     return out_dir / "index.html"
+
+
+# ── 아카이브: 시간별 스냅샷 영구 페이지 ─────────────────────────────────
+
+
+def build_archive_pages(
+    snapshots: list[tuple[str, dict]], out_dir: Path, now: datetime
+) -> None:
+    """/archive/<stamp>/ 정적 스냅샷 페이지 + 아카이브 목록 페이지.
+
+    매시간 index를 덮어써도 과거 브리핑과 공유 링크(#issue-N)가 살아남는다.
+    """
+    prev_share = _SHARE_BASE
+    set_share_base(None)  # 아카이브 페이지 자체가 영구 링크
+    stamp_footer = (
+        f"ⓒ {_esc(config.SITE_TITLE)} ({_esc(config.SITE_DOMAIN)}) · "
+        f"생성 시각 {now.strftime('%Y-%m-%d %H:%M KST')}"
+    )
+    for stamp, briefing in snapshots:
+        cards = "".join(
+            _render_issue(issue, i) for i, issue in enumerate(briefing.get("issues", []))
+        )
+        main_html = f"""<div class="py-6">
+  <p class="text-xs text-neutral-400 mb-4">{_esc(stamp)} (KST) 시점의 브리핑 스냅샷입니다.
+    <a class="text-blue-600 dark:text-blue-400 hover:underline" href="../../">최신 브리핑 보기 →</a>
+    <a class="ml-2 text-blue-600 dark:text-blue-400 hover:underline" href="../">전체 아카이브 →</a></p>
+  <section class="grid sm:grid-cols-2 gap-4 content-start">{cards}</section>
+</div>"""
+        page = _page(
+            title=f"{stamp} 브리핑 아카이브 — {config.SITE_TITLE}",
+            active="news",
+            generated_at=briefing.get("generated_at", ""),
+            feed="",
+            updated_label=f"{stamp} 스냅샷",
+            head_extra="",
+            tabs_html="",
+            after_header="",
+            main_html=main_html,
+            footer_notes=[DISCLAIMER],
+            site_stamp=stamp_footer,
+            asset_prefix="../../",
+        )
+        page_dir = out_dir / "archive" / stamp
+        page_dir.mkdir(parents=True, exist_ok=True)
+        (page_dir / "index.html").write_text(page, encoding="utf-8")
+
+    rows = "".join(
+        f'<li><a class="block px-4 py-2.5 text-sm hover:bg-stone-50 dark:hover:bg-neutral-700/40 hover:text-blue-600 dark:hover:text-blue-400 tabular-nums" href="{_esc(s)}/">{_esc(s)} 브리핑</a></li>'
+        for s, _ in snapshots
+    )
+    index_html = f"""<div class="max-w-xl mx-auto py-6">
+  <h2 class="text-sm font-bold mb-3">시간별 브리핑 아카이브</h2>
+  <ol class="rounded-xl border border-stone-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 divide-y divide-stone-200 dark:divide-neutral-700 overflow-hidden">{rows}</ol>
+</div>"""
+    page = _page(
+        title=f"브리핑 아카이브 — {config.SITE_TITLE}",
+        active="news",
+        generated_at="",
+        feed="",
+        updated_label="아카이브",
+        head_extra="",
+        tabs_html="",
+        after_header="",
+        main_html=index_html,
+        footer_notes=[],
+        site_stamp=stamp_footer,
+        asset_prefix="../",
+    )
+    (out_dir / "archive").mkdir(parents=True, exist_ok=True)
+    (out_dir / "archive" / "index.html").write_text(page, encoding="utf-8")
+    set_share_base(prev_share)
 
 
 # ── SEO: sitemap.xml / rss.xml / robots.txt 자동 생성 ───────────────────
 
 
 def build_seo_files(
-    briefing: dict, out_dir: Path, domain: str, now: datetime
+    briefing: dict, out_dir: Path, domain: str, now: datetime,
+    archive_stamps: list[str] | None = None,
 ) -> None:
     from email.utils import format_datetime
 
@@ -1181,7 +1229,8 @@ def build_seo_files(
         ("", "1.0", "hourly"),
         ("community.html", "0.8", "hourly"),
         ("scrapbook.html", "0.3", "monthly"),
-    ]
+        ("archive/", "0.5", "hourly"),
+    ] + [(f"archive/{s}/", "0.6", "monthly") for s in (archive_stamps or [])]
     urls = "".join(
         f"<url><loc>{base}/{path}</loc><lastmod>{lastmod}</lastmod>"
         f"<changefreq>{freq}</changefreq><priority>{prio}</priority></url>"
@@ -1201,10 +1250,11 @@ def build_seo_files(
             pub = format_datetime(datetime.fromisoformat(issue["latest_ts"]))
         except (KeyError, ValueError):
             pub = format_datetime(now)
+        permalink = f"{_SHARE_BASE}#issue-{i}" if _SHARE_BASE else f"{base}/#issue-{i}"
         items.append(
             "<item>"
             f"<title>{html.escape(issue['label'])}</title>"
-            f"<link>{base}/#issue-{i}</link>"
+            f"<link>{html.escape(permalink)}</link>"
             f"<description>{html.escape(issue['summary'])}</description>"
             f"<category>{html.escape(issue['category'])}</category>"
             f"<pubDate>{pub}</pubDate>"

@@ -6,7 +6,8 @@ on:
   workflow_dispatch: {} # 수동 실행
 
 permissions:
-  contents: read
+  contents: write # 아카이브 스냅샷 커밋
+  issues: write # 실패 시 이슈 자동 생성
   pages: write
   id-token: write
 
@@ -14,11 +15,17 @@ concurrency:
   group: pages
   cancel-in-progress: false
 
+env:
+  # Sentry Cron Monitor (DSN 기반 체크인 — 실패/미실행 시 Sentry가 알림)
+  SENTRY_CRON_URL: https://o4511726173159424.ingest.us.sentry.io/api/4511776368689152/cron/hourly-briefing/d80edcd8a1167eecfe0d7ef5bdb37f7c/
+
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Sentry check-in (시작)
+        run: curl -sf "${SENTRY_CRON_URL}?status=in_progress" > /dev/null || true
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -33,6 +40,8 @@ jobs:
             data/community_seen.json
           key: briefing-cache-${{ github.run_id }}
           restore-keys: briefing-cache-
+      - name: Unit tests (cluster.py)
+        run: python tests/test_cluster.py
       - name: Generate briefing
         run: python run.py
         env:
@@ -41,9 +50,32 @@ jobs:
           BRIEFING_MODEL: ${{ vars.BRIEFING_MODEL }}
           NEWSLETTER_FORM_ACTION: ${{ vars.NEWSLETTER_FORM_ACTION }}
           NEWSLETTER_FORM_ENTRY: ${{ vars.NEWSLETTER_FORM_ENTRY }}
+      - name: Commit archive snapshot
+        run: |
+          if [ -n "$(git status --porcelain archive)" ]; then
+            git config user.name "goreun-bot"
+            git config user.email "actions@github.com"
+            git add archive
+            git commit -m "archive: $(date -u +%Y-%m-%dT%H:%M)Z snapshot"
+            git pull --rebase origin main || true
+            git push origin main || echo "아카이브 푸시 실패 (다음 실행에서 재시도)"
+          fi
       - uses: actions/upload-pages-artifact@v3
         with:
           path: site
+      - name: Sentry check-in (성공)
+        if: success()
+        run: curl -sf "${SENTRY_CRON_URL}?status=ok" > /dev/null || true
+      - name: 실패 알림 (Sentry + GitHub 이슈)
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          curl -sf "${SENTRY_CRON_URL}?status=error" > /dev/null || true
+          gh issue create \
+            --title "hourly-briefing 실패: run #${{ github.run_number }}" \
+            --body "워크플로우 실행이 실패했습니다. 로그: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+            || true
 
   deploy:
     needs: build

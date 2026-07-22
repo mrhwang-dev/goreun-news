@@ -139,6 +139,27 @@ def _cluster_key(titles: list[str]) -> str:
     return hashlib.md5("|".join(sorted(titles)).encode()).hexdigest()
 
 
+def _stable_cluster_key(cluster: list[dict]) -> str:
+    """클러스터의 안정 앵커 키 — 최초(가장 이른) 기사 링크.
+
+    제목 집합 해시는 새 기사 1건 합류에도 캐시 미스가 나서 같은 이슈를
+    매시간 재라벨링하게 된다. 최초 기사 링크는 클러스터가 커져도 불변.
+    """
+    earliest = min(cluster, key=lambda m: m["ts"])
+    return hashlib.md5(earliest["link"].encode()).hexdigest()
+
+
+def _stable_issue_key(issue: dict) -> str:
+    """이슈(정밀 요약)용 안정 키 — 최초 기사 링크 + 규모 버킷.
+
+    headlines는 시간 오름차순이라 [0]이 최초 기사. 매체 수가 5단위로
+    크게 늘면(속보→대형 이슈 성장) 한 번은 다시 요약한다.
+    """
+    anchor = issue["headlines"][0]["link"] if issue.get("headlines") else issue["label"]
+    bucket = issue.get("outlet_count", 0) // 5
+    return hashlib.md5(f"{anchor}|{bucket}".encode()).hexdigest()
+
+
 # ── 1단계: Gemini 1차 분류 (노이즈 필터 + 분야 + 임시 라벨) ─────────────
 
 
@@ -150,7 +171,7 @@ def label_clusters(clusters: list[list[dict]]) -> dict[int, dict]:
     to_ask: list[int] = []
 
     for ci, cluster in enumerate(clusters):
-        key = _cluster_key([m["title"] for m in cluster])
+        key = _stable_cluster_key(cluster)
         keys[ci] = key
         hit = cache["clusters"].get(key)
         if hit:
@@ -212,7 +233,7 @@ def refine_top_issues(issues: list[dict], top_n: int | None = None) -> None:
     to_ask: list[int] = []
     keys: dict[int, str] = {}
     for i, issue in enumerate(targets):
-        key = _cluster_key([h["title"] for h in issue["headlines"]])
+        key = _stable_issue_key(issue)
         keys[i] = key
         hit = cache["refined"].get(key)
         if hit:
