@@ -5,22 +5,44 @@
 /* hidden 속성은 어떤 display 유틸리티(flex 등)보다 우선한다 */
 [hidden] { display: none !important; }
 
-/* ── 고른뉴스 커스텀 컴포넌트 (build_site.py 마크업과 짝) ── */
+/* ── 고른뉴스 커스텀 컴포넌트 ── */
 .no-scrollbar::-webkit-scrollbar { display: none; }
 .no-scrollbar { scrollbar-width: none; }
-.tab[aria-selected="true"] { @apply bg-neutral-900 text-stone-50 border-neutral-900 dark:bg-neutral-100 dark:text-neutral-900 dark:border-neutral-100; }
-.tab[aria-selected="true"] .badge { @apply bg-white/20 dark:bg-black/10; }
+
+/* 카테고리 탭 애니메이션 & 선택 스타일 */
+.tab {
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.tab[aria-selected="true"] {
+  @apply bg-neutral-900 text-stone-50 border-neutral-900 dark:bg-neutral-100 dark:text-neutral-900 dark:border-neutral-100 shadow-sm scale-[1.02];
+}
+.tab[aria-selected="true"] .badge {
+  @apply bg-white/20 dark:bg-black/10;
+}
+
+/* 카드 호버 마이크로 인터랙션 */
+article[data-cat] {
+  transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.2s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.2s ease;
+}
+article[data-cat]:hover {
+  transform: translateY(-2px);
+  @apply shadow-md border-stone-300 dark:border-neutral-700;
+}
+
 details[open] .tri { transform: rotate(180deg); }
 .tri { transition: transform 0.15s; }
+
 /* 티커: 숨은 항목이 클릭을 가로채지 않도록 pointer-events/visibility 제어 */
 .ticker-item { opacity: 0; visibility: hidden; pointer-events: none; transition: opacity 0.5s, visibility 0.5s; }
 .ticker-item.show { opacity: 1; visibility: visible; pointer-events: auto; }
+
 /* 글자 크기 단계 (가/가+) — 기본은 1단계 */
 :root[data-fs="0"] .fs-t { font-size: 14px; }
 :root[data-fs="0"] .fs-p { font-size: 12.5px; }
 :root[data-fs="2"] .fs-t { font-size: 17px; }
 :root[data-fs="2"] .fs-p { font-size: 15.5px; }
-#site-header { transition: transform 0.3s; }
+
+#site-header { transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
 body, h1, h2, h3, h4, h5, h6, p, article {
   word-break: keep-all;
   overflow-wrap: break-word;
@@ -29,25 +51,35 @@ body, h1, h2, h3, h4, h5, h6, p, article {
 /* AI 요약 3줄 클램프 + 하단 페이드, 클릭 시 펼침 */
 .summary-wrap p { @apply line-clamp-3 break-keep; }
 .summary-wrap.open p { -webkit-line-clamp: unset; }
-.summary-wrap .fade { @apply absolute bottom-0 inset-x-0 h-5 bg-gradient-to-t from-white dark:from-neutral-800 to-transparent pointer-events-none transition-opacity; }
+.summary-wrap .fade { @apply absolute bottom-0 inset-x-0 h-6 bg-gradient-to-t from-white dark:from-neutral-800 to-transparent pointer-events-none transition-opacity; }
 .summary-wrap.open .fade, .summary-wrap.no-clamp .fade { opacity: 0; }
 .summary-wrap.no-clamp { cursor: default; }
+
 /* 무한 스크롤: 아직 공개되지 않은 카드 */
-.not-revealed { display: none; }
+.not-revealed { display: none !important; }
+
 /* 히어로 카드: 현재 보기(전체/분야)의 1위 이슈를 크게 — JS가 .is-hero 부여 */
-.is-hero { grid-column: 1 / -1; border-top-width: 4px; border-radius: 1rem; padding: 1.75rem; }
+.is-hero {
+  grid-column: 1 / -1;
+  border-top-width: 4px;
+  border-radius: 1.25rem;
+  padding: 1.75rem;
+  @apply shadow-lg bg-gradient-to-b from-white to-stone-50/50 dark:from-neutral-800 dark:to-neutral-900/50 border-l border-r border-b border-stone-200/90 dark:border-neutral-700;
+}
 .is-hero h3 { font-size: 1.7rem; line-height: 1.3; font-weight: 800; letter-spacing: -0.02em; word-break: keep-all; }
-@media (min-width: 1024px) { .is-hero h3 { font-size: 2rem; } }
+@media (min-width: 1024px) { .is-hero h3 { font-size: 2.1rem; } }
 .is-hero .summary-wrap { cursor: default; }
-.is-hero .summary-wrap p { -webkit-line-clamp: unset; font-size: 0.95rem; line-height: 1.75; width: 100%; max-width: 100%; word-break: keep-all; }
+.is-hero .summary-wrap p { -webkit-line-clamp: unset; font-size: 0.98rem; line-height: 1.75; width: 100%; max-width: 100%; word-break: keep-all; }
 .is-hero .summary-wrap .fade { opacity: 0; }
 .is-hero .bias-inline { display: block; }
 .is-hero .hero-badge { display: inline-flex; }
 /* 히어로는 성향 바를 상시 노출하므로 펼침 본문 안의 중복 바는 숨김 */
 .is-hero .headlines-body > [aria-label="보도 매체 성향 분포"] { display: none; }
 .is-hero .headlines-body > ul { margin-top: 0; }
+
 /* 키워드 팔로우 매칭 카드 강조 */
 .kw-hit { @apply ring-2 ring-amber-400 dark:ring-amber-500/70; }
+
 /* 티커 → 카드 도착 하이라이트 (2초간 은은한 블루 링) */
 .flash-ring { animation: flashRing 1s ease-in-out 2; }
 @keyframes flashRing {
@@ -58,6 +90,7 @@ body, h1, h2, h3, h4, h5, h6, p, article {
   .ticker-item, .tri, #site-header, .summary-wrap .fade { transition: none; }
   .flash-ring { animation: none; box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.5); }
 }
+
 /* 보도량 계층 카드: 많이 보도될수록 크게 */
 .card-lg h3 { font-size: 1.25rem; line-height: 1.3; }
 .card-lg .summary-wrap p { -webkit-line-clamp: 4; font-size: 0.95rem; }

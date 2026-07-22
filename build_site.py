@@ -93,6 +93,37 @@ def set_share_base(url: str | None) -> None:
     _SHARE_BASE = url
 
 BASE_SCRIPT = """
+// ── 다크/라이트/시스템 테마 전환 ──
+var themeBtn = document.getElementById("theme-toggle");
+var themeIcon = document.getElementById("theme-icon");
+function getTheme() { return localStorage.getItem("goreun_theme") || "system"; }
+function setTheme(t) {
+  localStorage.setItem("goreun_theme", t);
+  applyTheme();
+}
+function applyTheme() {
+  var t = getTheme();
+  var isDark = t === "dark" || (t === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+  document.documentElement.classList.toggle("dark", isDark);
+  if (themeIcon) {
+    if (t === "dark") themeIcon.textContent = "🌙 다크";
+    else if (t === "light") themeIcon.textContent = "☀️ 라이트";
+    else themeIcon.textContent = "💻 시스템";
+  }
+}
+if (themeBtn) {
+  themeBtn.addEventListener("click", function() {
+    var cur = getTheme();
+    var next = cur === "system" ? "dark" : (cur === "dark" ? "light" : "system");
+    setTheme(next);
+    toast(next === "dark" ? "다크 모드" : (next === "light" ? "라이트 모드" : "시스템 설정 모드"));
+  });
+}
+window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", function() {
+  if (getTheme() === "system") applyTheme();
+});
+applyTheme();
+
 // ── 탭 필터 (뉴스: data-cat / 커뮤니티: data-src) ──
 var tabs = document.querySelectorAll(".tab");
 tabs.forEach(function (tab) {
@@ -153,6 +184,9 @@ if (tickerLink && tickerDataEl) {
     e.preventDefault();
     var card = document.getElementById(jumpTarget);
     if (!card) return;
+    if (card.classList.contains("not-revealed")) {
+      card.classList.remove("not-revealed");
+    }
     if (card.hidden) {
       var allTab = document.querySelector('.tab[data-value="전체"]');
       if (allTab) allTab.click();
@@ -645,10 +679,13 @@ document.querySelectorAll(".share-btn").forEach(function (btn) {
 
 // ── 글자 크기 조절 (가/가+, localStorage 유지) ──
 var FS_KEY = "goreun_fs";
+var FS_NAMES = ["작게", "보통", "크게"];
 function applyFs(level) {
   level = Math.max(0, Math.min(2, level));
   document.documentElement.dataset.fs = String(level);
   localStorage.setItem(FS_KEY, String(level));
+  var ind = document.getElementById("fs-indicator");
+  if (ind) ind.textContent = FS_NAMES[level] || "보통";
   return level;
 }
 var fsLevel = applyFs(parseInt(localStorage.getItem(FS_KEY) || "1", 10));
@@ -656,6 +693,27 @@ var fsDown = document.getElementById("fs-down");
 var fsUp = document.getElementById("fs-up");
 if (fsDown) fsDown.addEventListener("click", function () { fsLevel = applyFs(fsLevel - 1); });
 if (fsUp) fsUp.addEventListener("click", function () { fsLevel = applyFs(fsLevel + 1); });
+
+// ── 키보드 숏컷 & 모달 접근성 ──
+document.addEventListener("keydown", function(e) {
+  if (e.key === "Escape") {
+    closeLogin();
+    var obM = document.getElementById("onboard-modal");
+    if (obM && !obM.hidden) {
+      localStorage.setItem("goreun_onboarded", "1");
+      obM.hidden = true;
+    }
+  } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+    e.preventDefault();
+    location.href = "search.html";
+  }
+});
+var loginModal = document.getElementById("login-modal");
+if (loginModal) {
+  loginModal.addEventListener("click", function(e) {
+    if (e.target === loginModal) closeLogin();
+  });
+}
 
 // ── 정책 브리핑 예상 읽기 시간 (약 500자/분) ──
 document.querySelectorAll(".policy-item").forEach(function (item) {
@@ -1149,11 +1207,85 @@ def _tab(label: str, count: int, filter_key: str, value: str, selected: bool, do
     )
 
 
+def _seo_meta(
+    *, title: str, description: str, canonical: str,
+    og_type: str = "website", og_image: str = "",
+    jsonld_type: str = "WebPage", jsonld_extra: str = "",
+    jsonld_breadcrumb: bool = True,
+) -> str:
+    """공통 SEO 메타 블록(Open Graph + Twitter Card + JSON-LD) 생성.
+
+    모든 페이지에서 공통으로 쓰이는 메타를 _page() 안에서 자동 주입하기 위한 헬퍼.
+    - og_image 미지정 시 사이트 기본 OG 이미지(/og.png) 사용.
+    - jsonld_extra는 index 페이지의 WebSite/NewsMediaOrganization 등 추가 그래프를 싣는 슬롯.
+    """
+    base = f"https://{config.SITE_DOMAIN}"
+    path = "" if canonical == "/" else canonical
+    url = f"{base}/{path}" if path else f"{base}/"
+    desc = description or config.SITE_DESCRIPTION
+    img = og_image or f"{base}/og.png"
+    site_name = config.SITE_TITLE
+
+    og = [
+        f'<meta property="og:type" content="{_esc(og_type)}">',
+        f'<meta property="og:title" content="{_esc(title)}">',
+        f'<meta property="og:description" content="{_esc(desc)}">',
+        f'<meta property="og:url" content="{_esc(url)}">',
+        f'<meta property="og:site_name" content="{_esc(site_name)}">',
+        '<meta property="og:locale" content="ko_KR">',
+        f'<meta property="og:image" content="{_esc(img)}">',
+        '<meta property="og:image:width" content="1200">',
+        '<meta property="og:image:height" content="630">',
+        f'<meta property="og:image:alt" content="{_esc(site_name)} {_esc(config.SITE_TAGLINE)}">',
+    ]
+    tw = [
+        '<meta name="twitter:card" content="summary_large_image">',
+        f'<meta name="twitter:title" content="{_esc(title)}">',
+        f'<meta name="twitter:description" content="{_esc(desc)}">',
+        f'<meta name="twitter:image" content="{_esc(img)}">',
+    ]
+
+    # JSON-LD 구조화 데이터: 페이지 본체 + (선택) BreadcrumbList + (선택) 추가 그래프
+    graph: list[str] = []
+    page_node = {
+        "@type": jsonld_type,
+        "@id": url,
+        "name": title,
+        "url": url,
+        "description": desc,
+        "inLanguage": "ko-KR",
+        "isPartOf": {"@type": "WebSite", "@id": f"{base}/"},
+    }
+    graph.append(json.dumps(page_node, ensure_ascii=False))
+    if jsonld_breadcrumb and canonical:
+        crumb = {
+            "@type": "BreadcrumbList",
+            "itemListElement": [
+                {"@type": "ListItem", "position": 1, "name": site_name,
+                 "item": f"{base}/"},
+                {"@type": "ListItem", "position": 2, "name": title.split(" — ")[0],
+                 "item": url},
+            ],
+        }
+        graph.append(json.dumps(crumb, ensure_ascii=False))
+    if jsonld_extra:
+        graph.append(jsonld_extra)
+    ld = (
+        '<script type="application/ld+json">'
+        '{"@context":"https://schema.org","@graph":[' + ",".join(graph) + "]}</script>"
+    )
+    return "\n".join([*og, *tw, ld])
+
+
 def _page(
     *, title: str, active: str, generated_at: str, feed: str,
     updated_label: str, head_extra: str, tabs_html: str, after_header: str,
     main_html: str, footer_notes: list[str], site_stamp: str, extra_script: str = "",
     banner_html: str = "", asset_prefix: str = "",
+    description: str = "", canonical: str = "",
+    og_type: str = "website", og_image: str = "",
+    jsonld_type: str = "WebPage", jsonld_extra: str = "",
+    jsonld_breadcrumb: bool = True, noindex: bool = False,
 ) -> str:
     nav = "".join(
         f'<a href="{asset_prefix}{href}" class="px-2 py-1 rounded-lg text-sm '
@@ -1184,52 +1316,100 @@ def _page(
             f'<script src="https://js.sentry-cdn.com/{config.SENTRY_LOADER_KEY}.min.js" '
             'crossorigin="anonymous"></script>'
         )
+    # canonical: 루트는 "/", 그 외는 파일명. 미지정 시 태그 생략
+    canonical_tag = ""
+    if canonical:
+        path = "" if canonical == "/" else canonical
+        canonical_tag = f'<link rel="canonical" href="https://{config.SITE_DOMAIN}/{path}">\n'
+    robots_tag = '<meta name="robots" content="noindex, follow">\n' if noindex else ""
+    gsc_tag = ""
+    if config.GOOGLE_SITE_VERIFICATION:
+        gsc_tag = f'<meta name="google-site-verification" content="{_esc(config.GOOGLE_SITE_VERIFICATION)}">\n'
     adsense_script = ""
     if config.ADSENSE_CLIENT_ID:
         adsense_script = (
             f'<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client={_esc(config.ADSENSE_CLIENT_ID)}" '
             'crossorigin="anonymous"></script>'
         )
+    seo_meta = "" if noindex else _seo_meta(
+        title=title, description=description, canonical=canonical,
+        og_type=og_type, og_image=og_image,
+        jsonld_type=jsonld_type, jsonld_extra=jsonld_extra,
+        jsonld_breadcrumb=jsonld_breadcrumb,
+    )
     return f"""<!doctype html>
 <html lang="ko" data-generated-at="{_esc(generated_at)}" data-feed="{feed}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{_esc(title)}</title>
-<meta name="description" content="여러 언론사의 헤드라인을 교차 확인해 매시간 정리하는 중립 뉴스 브리핑">
+<meta name="description" content="{_esc(description or config.SITE_DESCRIPTION)}">
+{canonical_tag}{robots_tag}{gsc_tag}
+<link rel="alternate" type="application/rss+xml" title="{_esc(config.SITE_TITLE)} RSS" href="https://{config.SITE_DOMAIN}/rss.xml">
 {adsense_script}
+{seo_meta}
 {head_extra}
 <link rel="icon" href="{FAVICON_SVG}">
 <link rel="manifest" href="{asset_prefix}site.webmanifest">
 <link rel="apple-touch-icon" href="{asset_prefix}icon-512.png">
 <meta name="theme-color" content="#2563eb">
 <link rel="stylesheet" href="{asset_prefix}tailwind.css">
+<script>
+(function() {{
+  var t = localStorage.getItem("goreun_theme") || "system";
+  if (t === "dark" || (t === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches)) {{
+    document.documentElement.classList.add("dark");
+  }} else {{
+    document.documentElement.classList.remove("dark");
+  }}
+}})();
+</script>
 <!-- AdSense 승인 후 사이트 확인/광고 스크립트를 여기에 붙여넣으세요 -->
 </head>
 <body class="bg-stone-50 dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 antialiased" style='font-family:"Pretendard Variable",Pretendard,-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Noto Sans KR","Malgun Gothic",sans-serif'>
 <div id="offline-banner" hidden class="bg-amber-100 dark:bg-amber-500/15 text-amber-800 dark:text-amber-300 text-xs text-center px-4 py-2">오프라인 상태이거나 최신 뉴스를 불러오지 못했습니다. 이전 뉴스를 보여줍니다.</div>
-<header id="site-header" class="sticky top-0 z-20 border-b border-stone-200 dark:border-neutral-700 bg-stone-50/90 dark:bg-neutral-900/90 backdrop-blur">
-  <div class="max-w-[1440px] mx-auto px-5">
-    <div class="flex items-center gap-2.5 py-3 flex-wrap">
-      <a href="index.html" class="flex items-center gap-2.5 shrink-0" aria-label="고른뉴스 홈">
-        {LOGO_MARK}
-        <span class="text-xl font-extrabold tracking-tight">{_esc(config.SITE_TITLE)}</span>
-      </a>
-      <span class="hidden md:inline text-xs text-neutral-500 dark:text-neutral-400">{_esc(config.SITE_TAGLINE)}</span>
-      <nav class="flex gap-1 ml-2 overflow-x-auto no-scrollbar max-w-full [&>a]:shrink-0" aria-label="페이지">{nav}</nav>
-      <span class="ml-auto flex items-center gap-1.5 text-xs text-neutral-500 dark:text-neutral-400">
-        <span class="relative flex h-2 w-2" aria-hidden="true">
-          <span class="animate-pulse absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-          <span class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+<header id="site-header" class="sticky top-0 z-20 border-b border-stone-200/80 dark:border-neutral-800 bg-stone-50/90 dark:bg-neutral-900/90 backdrop-blur-md">
+  <div class="max-w-[1440px] mx-auto px-4 sm:px-6">
+    <div class="flex items-center justify-between py-2.5 gap-3 border-b border-stone-200/60 dark:border-neutral-800/60">
+      <div class="flex items-center gap-3 shrink-0">
+        <a href="index.html" class="flex items-center gap-2.5 hover:opacity-90 transition-opacity" aria-label="고른뉴스 홈">
+          {LOGO_MARK}
+          <span class="text-xl font-extrabold tracking-tight bg-gradient-to-r from-blue-600 to-indigo-600 dark:from-blue-400 dark:to-indigo-400 bg-clip-text text-transparent">{_esc(config.SITE_TITLE)}</span>
+        </a>
+        <span class="hidden md:inline-block text-xs text-neutral-500 dark:text-neutral-400 font-medium pl-2 border-l border-stone-300 dark:border-neutral-700">{_esc(config.SITE_TAGLINE)}</span>
+      </div>
+      
+      <div class="flex items-center gap-2">
+        <span class="hidden sm:flex items-center gap-1.5 text-xs text-neutral-500 dark:text-neutral-400 mr-1">
+          <span class="relative flex h-2 w-2" aria-hidden="true">
+            <span class="animate-pulse absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+            <span class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+          </span>
+          <span id="updated-label" class="tabular-nums">{_esc(updated_label)}</span>
         </span>
-        <span id="updated-label" class="tabular-nums">{_esc(updated_label)}</span>
-      </span>
-      <span class="flex gap-1 items-center">
+
         <span id="auth-area" class="flex items-center gap-1"></span>
-        <button type="button" id="fs-down" title="글자 작게" class="rounded-full border border-stone-300 dark:border-neutral-600 bg-white dark:bg-neutral-800 px-2.5 py-1 text-xs text-neutral-500 dark:text-neutral-400 hover:text-blue-600 hover:border-blue-500">가</button>
-        <button type="button" id="fs-up" title="글자 크게" class="rounded-full border border-stone-300 dark:border-neutral-600 bg-white dark:bg-neutral-800 px-2.5 py-1 text-sm text-neutral-500 dark:text-neutral-400 hover:text-blue-600 hover:border-blue-500">가+</button>
-        <button type="button" id="bug-report" class="rounded-full border border-stone-300 dark:border-neutral-600 bg-white dark:bg-neutral-800 px-3 py-1 text-xs text-neutral-500 dark:text-neutral-400 hover:text-blue-600 hover:border-blue-500 dark:hover:text-blue-400">버그 제보</button>
-      </span>
+
+        <button type="button" id="theme-toggle" title="테마 변경 (라이트/다크/시스템)" class="rounded-full border border-stone-300 dark:border-neutral-700 bg-white dark:bg-neutral-800 px-2.5 py-1 text-xs text-neutral-600 dark:text-neutral-300 hover:text-blue-600 dark:hover:text-blue-400 transition-colors flex items-center gap-1">
+          <span id="theme-icon">💻</span>
+        </button>
+
+        <div class="flex items-center rounded-full border border-stone-300 dark:border-neutral-700 bg-white dark:bg-neutral-800 p-0.5 text-xs">
+          <button type="button" id="fs-down" title="글자 작게" class="px-2 py-0.5 rounded-full text-neutral-500 dark:text-neutral-400 hover:text-blue-600 dark:hover:text-blue-400">가</button>
+          <span id="fs-indicator" class="text-[10px] font-bold text-neutral-400 px-1 border-x border-stone-200 dark:border-neutral-700">보통</span>
+          <button type="button" id="fs-up" title="글자 크게" class="px-2 py-0.5 rounded-full text-neutral-500 dark:text-neutral-400 hover:text-blue-600 dark:hover:text-blue-400">가+</button>
+        </div>
+
+        <button type="button" id="bug-report" class="hidden sm:inline-flex rounded-full border border-stone-300 dark:border-neutral-700 bg-white dark:bg-neutral-800 px-3 py-1 text-xs text-neutral-500 dark:text-neutral-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">버그 제보</button>
+      </div>
+    </div>
+
+    <div class="flex items-center justify-between py-2 overflow-x-auto no-scrollbar">
+      <nav class="flex items-center gap-1 overflow-x-auto no-scrollbar [&>a]:shrink-0" aria-label="페이지">{nav}</nav>
+      <a href="search.html" class="hidden sm:flex items-center gap-1.5 text-xs text-neutral-400 dark:text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300 px-2 py-1 rounded-lg transition-colors shrink-0">
+        <span>🔍 검색</span>
+        <kbd class="hidden md:inline-block font-mono text-[10px] bg-stone-200/70 dark:bg-neutral-800 px-1.5 py-0.5 rounded border border-stone-300/50 dark:border-neutral-700">⌘K</kbd>
+      </a>
     </div>
     {tabs_nav}
   </div>
@@ -1248,24 +1428,24 @@ def _page(
     <p class="flex flex-wrap gap-x-3 gap-y-1"><span>{site_stamp}</span><span id="visit-count" class="tabular-nums"></span></p>
   </div>
 </footer>
-<div id="login-modal" hidden class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-  <div class="w-[22rem] rounded-xl border border-stone-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 p-5 shadow-xl">
+<div id="login-modal" hidden role="dialog" aria-modal="true" aria-label="로그인 및 회원가입 모달" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4">
+  <div class="w-[22rem] rounded-xl border border-stone-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 p-5 shadow-2xl">
     <div class="flex gap-1 mb-3">
-      <button type="button" id="auth-tab-login" class="auth-tab flex-1 rounded-lg py-1.5 text-sm font-medium" aria-selected="true">로그인</button>
-      <button type="button" id="auth-tab-signup" class="auth-tab flex-1 rounded-lg py-1.5 text-sm font-medium" aria-selected="false">회원가입</button>
+      <button type="button" id="auth-tab-login" class="auth-tab flex-1 rounded-lg py-1.5 text-sm font-medium transition-colors" aria-selected="true">로그인</button>
+      <button type="button" id="auth-tab-signup" class="auth-tab flex-1 rounded-lg py-1.5 text-sm font-medium transition-colors" aria-selected="false">회원가입</button>
     </div>
-    <p class="text-xs text-neutral-400 mb-3">계정 정보는 이 기기(브라우저)에만 저장되며 서버로 전송되지 않습니다. 비밀번호는 해시로만 보관됩니다.</p>
+    <p class="text-xs text-neutral-400 mb-3 leading-relaxed">계정 정보는 이 기기(브라우저)에만 저장되며 서버로 전송되지 않습니다. 비밀번호는 해시로만 보관됩니다.</p>
     <form id="login-form" class="flex flex-col gap-2">
       <input id="login-id" type="text" required maxlength="20" autocomplete="username" placeholder="아이디" class="rounded-lg border border-stone-300 dark:border-neutral-600 bg-stone-50 dark:bg-neutral-900 px-3 py-2 text-sm placeholder:text-neutral-400 focus:outline-none focus:border-blue-500">
       <input id="login-nick" type="text" maxlength="16" placeholder="닉네임" hidden class="rounded-lg border border-stone-300 dark:border-neutral-600 bg-stone-50 dark:bg-neutral-900 px-3 py-2 text-sm placeholder:text-neutral-400 focus:outline-none focus:border-blue-500">
       <input id="login-pw" type="password" required maxlength="32" autocomplete="current-password" placeholder="비밀번호" class="rounded-lg border border-stone-300 dark:border-neutral-600 bg-stone-50 dark:bg-neutral-900 px-3 py-2 text-sm placeholder:text-neutral-400 focus:outline-none focus:border-blue-500">
       <p id="login-error" hidden class="text-xs text-red-500"></p>
-      <button type="submit" id="login-submit" class="rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium py-2">로그인</button>
+      <button type="submit" id="login-submit" class="rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium py-2 transition-colors">로그인</button>
     </form>
-    <button type="button" id="login-close" class="mt-2.5 text-xs text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200">닫기</button>
+    <button type="button" id="login-close" class="mt-2.5 w-full text-center text-xs text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200">닫기</button>
   </div>
 </div>
-<button type="button" id="to-top" hidden aria-label="맨 위로" class="fixed bottom-6 right-5 z-40 w-11 h-11 rounded-full bg-neutral-900 text-stone-50 dark:bg-neutral-100 dark:text-neutral-900 shadow-lg text-lg">↑</button>
+<button type="button" id="to-top" hidden aria-label="맨 위로" class="fixed bottom-6 right-5 z-40 w-11 h-11 rounded-full bg-neutral-900 text-stone-50 dark:bg-neutral-100 dark:text-neutral-900 shadow-xl text-lg hover:scale-105 active:scale-95 transition-transform flex items-center justify-center">↑</button>
 {banner_html}
 <script>{BASE_SCRIPT}</script>
 {f"<script>{extra_script}</script>" if extra_script else ""}
@@ -1556,14 +1736,37 @@ def build(
     out_dir.mkdir(parents=True, exist_ok=True)
 
     punycode_domain = config.SITE_DOMAIN.encode("idna").decode()
-    og_url = ""
-    if build_og(briefing, out_dir / "og.png", now):
-        og_url = f"https://{punycode_domain}/og.png"
-    og_meta = f"""<meta property="og:type" content="website">
-<meta property="og:title" content="{_esc(config.SITE_TITLE)} — {_esc(config.SITE_TAGLINE)}">
-<meta property="og:description" content="여러 언론사의 헤드라인을 교차 확인해 매시간 정리하는 중립 뉴스 브리핑">
-{f'<meta property="og:image" content="{_esc(og_url)}">' if og_url else ""}
-<meta name="twitter:card" content="summary_large_image">"""
+    og_url = f"https://{punycode_domain}/og.png" if build_og(briefing, out_dir / "og.png", now) else ""
+    # index 전용 추가 JSON-LD 그래프: WebSite(사이트 검색액션) + NewsMediaOrganization
+    index_website = {
+        "@type": "WebSite",
+        "@id": f"https://{config.SITE_DOMAIN}/#website",
+        "name": config.SITE_TITLE,
+        "url": f"https://{config.SITE_DOMAIN}/",
+        "publisher": {"@id": f"https://{config.SITE_DOMAIN}/#org"},
+        "potentialAction": {
+            "@type": "SearchAction",
+            "target": {
+                "@type": "EntryPoint",
+                "urlTemplate": f"https://{config.SITE_DOMAIN}/search.html?q={{search_term_string}}",
+            },
+            "query-input": "required name=search_term_string",
+        },
+    }
+    index_org = {
+        "@type": "NewsMediaOrganization",
+        "@id": f"https://{config.SITE_DOMAIN}/#org",
+        "name": config.SITE_TITLE,
+        "url": f"https://{config.SITE_DOMAIN}/",
+        "logo": f"https://{config.SITE_DOMAIN}/icon-512.png",
+        "slogan": config.SITE_TAGLINE,
+        "sameAs": [],
+    }
+    index_jsonld = (
+        json.dumps(index_website, ensure_ascii=False)
+        + ","
+        + json.dumps(index_org, ensure_ascii=False)
+    )
 
     issues = briefing.get("issues", [])
     heat = briefing.get("heat", {})
@@ -1600,6 +1803,7 @@ def build(
     cards.append(f'<div class="col-span-full">{_date_strip(dates, today, "archive")}</div>')
 
     main_html = f"""<div class="grid grid-cols-1 lg:grid-cols-[7fr_3fr] gap-7 py-6">
+  <h1 class="sr-only">{_esc(config.SITE_TITLE)} — {_esc(config.SITE_TAGLINE)}</h1>
   <section class="grid sm:grid-cols-2 gap-4 content-start" aria-label="주요 이슈">{"".join(cards)}</section>
   {_render_sidebar(briefing.get("policy", []), briefing.get("blindspot"))}
 </div>"""
@@ -1637,17 +1841,24 @@ def build(
 
     page = _page(
         title=f"{config.SITE_TITLE} — {config.SITE_TAGLINE}",
+        canonical="/",
+        description="67개 언론사 헤드라인을 교차 확인한 매시간 중립 뉴스 브리핑 — 성향 스펙트럼·블라인드스팟·프레임 체크로 한 사건을 여러 시각에서.",
         active="news",
         banner_html=nl_banner + onboarding,
         generated_at=generated_at,
         feed="briefing.json",
         updated_label=updated,
-        head_extra=og_meta,
+        head_extra="",
         tabs_html="".join(tabs),
         after_header=_render_ticker(briefing.get("breaking", [])),
         main_html=main_html,
         footer_notes=[DISCLAIMER, KOGL_NOTICE],
         site_stamp=stamp,
+        og_type="website",
+        og_image=og_url,
+        jsonld_type="WebSite",
+        jsonld_extra=index_jsonld,
+        jsonld_breadcrumb=False,
     )
     (out_dir / "index.html").write_text(page, encoding="utf-8")
     (out_dir / "sw.js").write_text(
@@ -1812,14 +2023,19 @@ def build_blindspot_page(
   </div>
 </section>""")
 
-    main_html = f"""<div class="py-6 flex flex-col gap-8">
-  <p class="text-xs text-neutral-400 max-w-[80ch]">블라인드스팟은 한쪽 성향 매체만 보도한 이슈입니다. 지난 항목도 날짜별로 계속 쌓입니다. 성향 분류는 참고용 일반 분류입니다.</p>
+    main_html = f"""<div class="py-6 flex flex-col gap-6">
+  <div>
+    <h1 class="text-xl font-extrabold tracking-tight mb-1">블라인드스팟 — 특정 성향 매체만 보도한 이슈</h1>
+    <p class="text-xs text-neutral-400 max-w-[80ch]">블라인드스팟은 한쪽 성향 매체만 보도한 이슈입니다. 지난 항목도 날짜별로 계속 쌓입니다. 성향 분류는 참고용 일반 분류입니다.</p>
+  </div>
   {"".join(sections)}
   {_date_strip(dates, "", "anchor")}
 </div>"""
 
     page = _page(
         title=f"블라인드스팟 — {config.SITE_TITLE}",
+        canonical="blindspot.html",
+        description="한쪽 성향 매체만 보도한 이슈 모음 — 놓치기 쉬운 관점을 날짜별로 보존합니다.",
         active="blindspot",
         generated_at=generated_at,
         feed="briefing.json",
@@ -1830,6 +2046,7 @@ def build_blindspot_page(
         main_html=main_html,
         footer_notes=[DISCLAIMER],
         site_stamp=stamp,
+        og_type="article",
     )
     (out_dir / "blindspot.html").write_text(page, encoding="utf-8")
 
@@ -1922,14 +2139,19 @@ def build_frame_page(
 </section>""")
 
     body = "".join(sections) or '<p class="text-sm text-neutral-400 py-16 text-center">프레임 분석 대상 이슈가 아직 없습니다.</p>'
-    main_html = f"""<div class="py-6 flex flex-col gap-8">
-  <p class="text-xs text-neutral-400 max-w-[80ch]">🔍 프레임 체크 — 같은 사건을 다룬 매체들이 제목에서 어떤 단어를 골랐는지 해부합니다. 각 헤드라인 앞의 일시는 아카이브에서 처음 목격된 최초 보도 시점입니다. 참고용 AI 분석.</p>
+    main_html = f"""<div class="py-6 flex flex-col gap-6">
+  <div>
+    <h1 class="text-xl font-extrabold tracking-tight mb-1">프레임 체크 — 매체별 어조·시각차 비교</h1>
+    <p class="text-xs text-neutral-400 max-w-[80ch]">🔍 프레임 체크 — 같은 사건을 다룬 매체들이 제목에서 어떤 단어를 골랐는지 해부합니다. 각 헤드라인 앞의 일시는 아카이브에서 처음 목격된 최초 보도 시점입니다. 참고용 AI 분석.</p>
+  </div>
   {body}
   {_date_strip(dates, "", "anchor")}
 </div>"""
 
     page = _page(
         title=f"프레임 체크 — {config.SITE_TITLE}",
+        canonical="frame.html",
+        description="같은 사건, 다른 단어 — 매체별 제목의 단어 선택 차이를 알고리즘과 AI로 해부합니다.",
         active="frame",
         generated_at=generated_at,
         feed="briefing.json",
@@ -1940,6 +2162,7 @@ def build_frame_page(
         main_html=main_html,
         footer_notes=[DISCLAIMER],
         site_stamp=stamp,
+        og_type="article",
     )
     (out_dir / "frame.html").write_text(page, encoding="utf-8")
 
@@ -2113,6 +2336,7 @@ def build_search_assets(
     )
 
     main_html = """<div class="max-w-3xl mx-auto py-6 flex flex-col gap-4">
+  <h1 class="text-xl font-extrabold tracking-tight">뉴스 및 아카이브 검색</h1>
   <div class="flex gap-2">
     <input id="search-q" type="search" placeholder="단어로 검색 (제목·요약)" class="min-w-0 flex-1 rounded-xl border border-stone-300 dark:border-neutral-600 bg-white dark:bg-neutral-800 px-4 py-2.5 text-sm placeholder:text-neutral-400 focus:outline-none focus:border-blue-500">
     <select id="search-date" class="shrink-0 rounded-xl border border-stone-300 dark:border-neutral-600 bg-white dark:bg-neutral-800 px-3 py-2.5 text-sm">
@@ -2136,6 +2360,8 @@ def build_search_assets(
     )
     page = _page(
         title=f"검색 — {config.SITE_TITLE}",
+        canonical="search.html",
+        description="시간별 아카이브에 쌓인 이슈를 단어·날짜로 검색하고 보도 추이와 연관어를 확인하세요.",
         active="search",
         generated_at=now.isoformat(),
         feed="",
@@ -2147,6 +2373,7 @@ def build_search_assets(
         footer_notes=["검색은 시간별 아카이브에 수록된 이슈(제목·AI 요약)를 대상으로 하며, 결과는 해당 시각의 브리핑 스냅샷으로 연결됩니다."],
         site_stamp=stamp_footer,
         extra_script=SEARCH_SCRIPT,
+        og_type="website",
     )
     (out_dir / "search.html").write_text(page, encoding="utf-8")
 
@@ -2155,15 +2382,18 @@ def build_search_assets(
 
 
 def _build_doc(out_dir: Path, filename: str, title: str, body: str,
-               generated_at: str, updated: str, stamp: str) -> None:
+               generated_at: str, updated: str, stamp: str,
+               jsonld_type: str = "WebPage") -> None:
     main_html = f"""<div class="max-w-2xl mx-auto py-8 prose-doc">
   <h1 class="text-xl font-extrabold mb-6">{_esc(title)}</h1>
   {body}
 </div>"""
     page = _page(
         title=f"{title} — {config.SITE_TITLE}", active="", generated_at=generated_at,
+        canonical=filename, description=f"{title} — 고른뉴스 공식 문서",
         feed="", updated_label=updated, head_extra="", tabs_html="", after_header="",
         main_html=main_html, footer_notes=[], site_stamp=stamp,
+        og_type="article", jsonld_type=jsonld_type,
     )
     (out_dir / filename).write_text(page, encoding="utf-8")
 
@@ -2217,9 +2447,9 @@ PRIVACY_BODY = """
 
 
 def build_docs(out_dir: Path, generated_at: str, updated: str, stamp: str) -> None:
-    _build_doc(out_dir, "about.html", "고른뉴스란?", ABOUT_BODY, generated_at, updated, stamp)
+    _build_doc(out_dir, "about.html", "고른뉴스란?", ABOUT_BODY, generated_at, updated, stamp, jsonld_type="AboutPage")
     _build_doc(out_dir, "terms.html", "이용약관", TERMS_BODY, generated_at, updated, stamp)
-    _build_doc(out_dir, "privacy.html", "개인정보처리방침", PRIVACY_BODY, generated_at, updated, stamp)
+    _build_doc(out_dir, "privacy.html", "개인정보처리방침", PRIVACY_BODY, generated_at, updated, stamp, jsonld_type="WebPage")
 
 
 def build_newsletter_page(briefing: dict, out_dir: Path, now: datetime) -> None:
@@ -2289,6 +2519,7 @@ def build_archive_pages(
             _render_issue(issue, i) for i, issue in enumerate(briefing.get("issues", []))
         )
         main_html = f"""<div class="py-6">
+  <h1 class="text-xl font-extrabold tracking-tight mb-2">{_esc(stamp)} 브리핑 스냅샷</h1>
   <p class="text-xs text-neutral-400 mb-4">{_esc(stamp)} (KST) 시점의 브리핑 스냅샷입니다.
     <a class="text-blue-600 dark:text-blue-400 hover:underline" href="../../">최신 브리핑 보기 →</a>
     <a class="ml-2 text-blue-600 dark:text-blue-400 hover:underline" href="../">전체 아카이브 →</a></p>
@@ -2296,6 +2527,8 @@ def build_archive_pages(
 </div>"""
         page = _page(
             title=f"{stamp} 브리핑 아카이브 — {config.SITE_TITLE}",
+            canonical=f"archive/{stamp}/",
+            description=f"{stamp} (KST) 시점의 브리핑 스냅샷 — 매시간 저장된 뉴스 이슈 영구 보존본.",
             active="news",
             generated_at=briefing.get("generated_at", ""),
             feed="",
@@ -2307,6 +2540,7 @@ def build_archive_pages(
             footer_notes=[DISCLAIMER],
             site_stamp=stamp_footer,
             asset_prefix="../../",
+            og_type="article",
         )
         page_dir = out_dir / "archive" / stamp
         page_dir.mkdir(parents=True, exist_ok=True)
@@ -2328,13 +2562,15 @@ def build_archive_pages(
         )
     index_html = f"""<div class="max-w-2xl mx-auto py-6 flex flex-col gap-6">
   <div class="flex items-center justify-between">
-    <h2 class="text-sm font-bold">시간별 브리핑 아카이브</h2>
+    <h1 class="text-lg font-extrabold">시간별 브리핑 아카이브</h1>
     <a href="../search.html" class="text-xs text-blue-600 dark:text-blue-400 hover:underline">단어로 검색 →</a>
   </div>
   {"".join(sections)}
 </div>"""
     page = _page(
         title=f"브리핑 아카이브 — {config.SITE_TITLE}",
+        canonical="archive/",
+        description="매시간 저장된 브리핑 스냅샷 아카이브 — 지난 뉴스를 시각 단위로 다시 봅니다.",
         active="news",
         generated_at="",
         feed="",
@@ -2365,7 +2601,7 @@ def build_seo_files(
     if now.tzinfo is None:
         from datetime import timezone as _tz
         now = now.replace(tzinfo=_tz.utc)
-    lastmod = now.isoformat()
+    lastmod = now.strftime("%Y-%m-%dT%H:%M:%SZ")
 
     pages = [
         ("", "1.0", "hourly"),
@@ -2373,12 +2609,12 @@ def build_seo_files(
         ("frame.html", "0.8", "hourly"),
         ("community.html", "0.8", "hourly"),
         ("search.html", "0.6", "daily"),
-        ("scrapbook.html", "0.3", "monthly"),
         ("about.html", "0.5", "monthly"),
         ("terms.html", "0.2", "yearly"),
         ("privacy.html", "0.2", "yearly"),
         ("archive/", "0.5", "hourly"),
     ] + [(f"archive/{s}/", "0.6", "monthly") for s in (archive_stamps or [])]
+    # scrapbook.html은 개인화 페이지(noindex)이므로 사이트맵에서 제외
     urls = "".join(
         f"<url><loc>{base}/{path}</loc><lastmod>{lastmod}</lastmod>"
         f"<changefreq>{freq}</changefreq><priority>{prio}</priority></url>"
@@ -2659,6 +2895,7 @@ def build_community_page(
 
     main_html = f"""<div class="grid grid-cols-1 lg:grid-cols-[7fr_3fr] gap-7 py-6">
   <div class="flex flex-col gap-5">
+    <h1 class="text-xl font-extrabold tracking-tight">커뮤니티 트렌드 — 실시간 핫게시물</h1>
     {best_section}
     <section class="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4 content-start" aria-label="커뮤니티 인기글">{"".join(cards)}</section>
   </div>
@@ -2667,6 +2904,8 @@ def build_community_page(
 
     page = _page(
         title=f"커뮤니티 인기글 — {config.SITE_TITLE}",
+        canonical="community.html",
+        description="주요 커뮤니티에서 화제가 된 글과 뉴스를 참여도 기준으로 모아 보여줍니다.",
         active="community",
         generated_at=generated_at,
         feed="community.json",
@@ -2678,6 +2917,7 @@ def build_community_page(
         footer_notes=[COMMUNITY_NOTICE],
         site_stamp=stamp,
         extra_script=COMMUNITY_SIDEBAR_SCRIPT,
+        og_type="website",
     )
     out_path = out_dir / "community.html"
     out_path.write_text(page, encoding="utf-8")
@@ -2691,6 +2931,7 @@ def build_scrapbook_page(
     out_dir: Path, generated_at: str, now: datetime, updated: str, stamp: str
 ) -> Path:
     main_html = """<div class="max-w-3xl mx-auto py-6 flex flex-col gap-6">
+  <h1 class="text-xl font-extrabold tracking-tight">스크랩북</h1>
   <div id="scrap-login-gate" hidden class="text-center py-16">
     <p class="text-sm text-neutral-500 dark:text-neutral-400 mb-4">스크랩북은 로그인 후 이용할 수 있습니다.<br><span class="text-xs text-neutral-400">닉네임만 입력하면 되고, 정보는 이 기기에만 저장됩니다.</span></p>
     <button type="button" id="scrap-gate-login" class="rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-5 py-2">로그인</button>
@@ -2721,6 +2962,8 @@ def build_scrapbook_page(
 
     page = _page(
         title=f"스크랩북 — {config.SITE_TITLE}",
+        canonical="scrapbook.html",
+        description="저장한 뉴스·커뮤니티 글을 모아 보는 개인 스크랩북.",
         active="scrapbook",
         generated_at=generated_at,
         feed="",
@@ -2734,6 +2977,8 @@ def build_scrapbook_page(
         extra_script=SCRAPBOOK_SCRIPT.replace(
             "__OUTLET_BIAS__", json.dumps(config.OUTLET_BIAS, ensure_ascii=False)
         ),
+        og_type="website",
+        noindex=True,  # 개인화 페이지 — 검색 색인에서 제외
     )
     out_path = out_dir / "scrapbook.html"
     out_path.write_text(page, encoding="utf-8")

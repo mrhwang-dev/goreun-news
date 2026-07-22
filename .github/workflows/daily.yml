@@ -59,6 +59,7 @@ jobs:
           NEWSLETTER_FORM_ACTION: ${{ vars.NEWSLETTER_FORM_ACTION }}
           NEWSLETTER_FORM_ENTRY: ${{ vars.NEWSLETTER_FORM_ENTRY }}
           ADSENSE_CLIENT_ID: ${{ vars.ADSENSE_CLIENT_ID }}
+          GOOGLE_SITE_VERIFICATION: ${{ vars.GOOGLE_SITE_VERIFICATION }}
       - name: Commit archive snapshot
         run: |
           if [ -n "$(git status --porcelain archive)" ]; then

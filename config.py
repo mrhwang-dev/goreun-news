@@ -149,6 +149,8 @@ NEWSLETTER_FORM_ENTRY = os.environ.get("NEWSLETTER_FORM_ENTRY", "")
 # 구글 애드센스 연동 설정 (예: ca-pub-XXXXXXXXXXXXXXXX)
 # GitHub Actions Variables 또는 .env에 ADSENSE_CLIENT_ID 등록 시 자동 반영
 ADSENSE_CLIENT_ID = os.environ.get("ADSENSE_CLIENT_ID", "")
+# Google Search Console HTML 태그 확인용 content 값 (vars.GOOGLE_SITE_VERIFICATION)
+GOOGLE_SITE_VERIFICATION = os.environ.get("GOOGLE_SITE_VERIFICATION", "")
 
 # ── 모델/사이트 ─────────────────────────────────────────────────────────
 # 다중 모델 라우팅: Gemini(대규모 1차 분류) + Claude(상위 이슈 정밀 요약)
@@ -164,6 +166,8 @@ REFINE_TOP_ISSUES = 12
 
 SITE_TITLE = "고른뉴스"
 SITE_TAGLINE = "골라 담아, 고르게 전합니다"
+# 사이트 기본 설명 — 메타 description·OG·JSON-LD의 폴백값으로 사용 (분산 하드코딩 방지)
+SITE_DESCRIPTION = "여러 언론사의 헤드라인을 교차 확인해 매시간 정리하는 중립 뉴스 브리핑"
 # 연결 도메인 (가비아 정식 도메인)
 SITE_DOMAIN = "goreunnews.cloud"
 

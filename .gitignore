@@ -5,3 +5,6 @@ data/cache.json
 data/community_seen.json
 data/bias_model_state.json
 .DS_Store
+.venv/
+*_preview.png
+
