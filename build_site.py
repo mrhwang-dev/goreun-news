@@ -573,7 +573,7 @@ if (loginForm) {
     var err = document.getElementById("login-error");
     function fail(msg) { err.textContent = msg; err.hidden = false; }
     if (!id || !pw) return;
-    sha256(id + ":" + pw).then(function (hash) {
+    sha256("goreun_salt_v1:" + id + ":" + pw).then(function (hash) {
       var accounts = loadAccounts();
       if (authMode === "signup") {
         if (accounts[id]) { fail("이미 존재하는 아이디입니다. 로그인 탭을 이용하세요."); return; }
@@ -793,10 +793,11 @@ var H2C_URL = "https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.m
 function loadHtml2Canvas() {
   if (window.html2canvas) return Promise.resolve();
   return new Promise(function (resolve, reject) {
+    var timer = setTimeout(function () { reject(new Error("html2canvas load timeout")); }, 8000);
     var s = document.createElement("script");
     s.src = H2C_URL;
-    s.onload = resolve;
-    s.onerror = reject;
+    s.onload = function () { clearTimeout(timer); resolve(); };
+    s.onerror = function (e) { clearTimeout(timer); reject(e); };
     document.head.appendChild(s);
   });
 }
@@ -2316,7 +2317,11 @@ def build_search_assets(
     """
     entries: dict[tuple[str, str], dict] = {}
     for stamp, brief in sorted(snapshots, key=lambda s: s[0]):
-        date = stamp[:10]
+        try:
+            dt_utc = datetime.strptime(stamp, "%Y-%m-%d-%H%M").replace(tzinfo=timezone.utc)
+            date = dt_utc.astimezone(ZoneInfo("Asia/Seoul")).strftime("%Y-%m-%d")
+        except Exception:
+            date = stamp[:10]
         for i, issue in enumerate(brief.get("issues", [])):
             label = issue.get("label")
             if not label:

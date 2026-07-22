@@ -262,16 +262,19 @@ def fetch_community() -> list[dict]:
     scored.sort(key=lambda p: p["_score"], reverse=True)
     all_posts = [{k: v for k, v in p.items() if k != "_score"} for p in scored[:TOTAL_POSTS]]
 
-    # 썸네일: 신규 글만 og:image 1회 조회 (핫링크 표시용 URL만 저장, 이미지 미복제)
-    budget = THUMB_FETCH_BUDGET
-    for post in all_posts:
-        rec = seen_out[post["link"]]
-        if not rec.get("checked") and budget > 0:
-            rec["thumb"] = _fetch_thumb(post["link"])
+    # 썸네일: 신규 글만 og:image 비동기 병렬 조회 (핫링크 표시용 URL만 저장)
+    targets = [p for p in all_posts if not seen_out[p["link"]].get("checked")][:THUMB_FETCH_BUDGET]
+    if targets:
+        from concurrent.futures import ThreadPoolExecutor
+        def _get_and_cache(p: dict) -> None:
+            rec = seen_out[p["link"]]
+            rec["thumb"] = _fetch_thumb(p["link"])
             rec["checked"] = True
-            budget -= 1
-            time.sleep(0.2)
-        post["thumb"] = rec.get("thumb")
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            list(pool.map(_get_and_cache, targets))
+
+    for post in all_posts:
+        post["thumb"] = seen_out[post["link"]].get("thumb")
 
     SEEN_PATH.parent.mkdir(parents=True, exist_ok=True)
     SEEN_PATH.write_text(json.dumps(seen_out), encoding="utf-8")

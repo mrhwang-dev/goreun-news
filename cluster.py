@@ -92,10 +92,24 @@ def cluster_items(
     feats = [char_bigrams(normalize_title(it["title"])) for it in items]
     uf = _UnionFind(len(items))
 
-    for i in range(len(items)):
-        for j in range(i + 1, len(items)):
-            if is_same_event(feats[i], feats[j], jaccard_th, overlap_th):
-                uf.union(i, j)
+    # 역인덱스(Inverted Index) 구축: 공통 bigram이 단 1개라도 있는 후보 기사 쌍만 검사하여 O(N^2) 무의미한 연산 제거
+    bigram_to_items: dict[str, list[int]] = defaultdict(list)
+    for i, bg_set in enumerate(feats):
+        for bg in bg_set:
+            bigram_to_items[bg].append(i)
+
+    candidate_pairs: set[tuple[int, int]] = set()
+    for item_ids in bigram_to_items.values():
+        if len(item_ids) < 2:
+            continue
+        for idx1 in range(len(item_ids)):
+            for idx2 in range(idx1 + 1, len(item_ids)):
+                i, j = item_ids[idx1], item_ids[idx2]
+                candidate_pairs.add((i, j) if i < j else (j, i))
+
+    for i, j in candidate_pairs:
+        if is_same_event(feats[i], feats[j], jaccard_th, overlap_th):
+            uf.union(i, j)
 
     groups: dict[int, list[int]] = defaultdict(list)
     for i in range(len(items)):
