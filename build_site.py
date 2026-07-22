@@ -354,24 +354,178 @@ document.querySelectorAll(".policy-item").forEach(function (item) {
   }
 });
 
-// ── 뉴스레터 구독 (구글 폼 AJAX 제출) ──
-var newsletter = document.getElementById("newsletter");
-if (newsletter) {
-  newsletter.addEventListener("submit", function (e) {
+// ── 뉴스레터 구독 (구글 폼 AJAX 제출, 사이드바/배너 공용) ──
+function wireNewsletterForm(form, doneEl) {
+  if (!form) return;
+  form.addEventListener("submit", function (e) {
     e.preventDefault();
-    var action = newsletter.dataset.action;
-    var entry = newsletter.dataset.entry;
-    var email = newsletter.querySelector("input[type=email]").value;
+    var action = form.dataset.action;
+    var entry = form.dataset.entry;
+    var email = form.querySelector("input[type=email]").value;
     if (!action || !entry) { toast("구독 폼이 아직 연결되지 않았습니다"); return; }
     var body = new FormData();
     body.append(entry, email);
-    fetch(action, { method: "POST", mode: "no-cors", body: body })
-      .finally(function () {
-        newsletter.hidden = true;
-        document.getElementById("newsletter-done").hidden = false;
-      });
+    fetch(action, { method: "POST", mode: "no-cors", body: body }).finally(function () {
+      form.hidden = true;
+      if (doneEl) doneEl.hidden = false;
+      localStorage.setItem("goreun_nl_subscribed", "1");
+    });
   });
 }
+wireNewsletterForm(
+  document.getElementById("newsletter"),
+  document.getElementById("newsletter-done")
+);
+
+// ── 행동 기반 슬라이드업 구독 배너 (스크롤 50% 또는 카드 3회 펼침) ──
+var nlBanner = document.getElementById("nl-banner");
+if (nlBanner) {
+  if (
+    localStorage.getItem("goreun_nl_dismissed") ||
+    localStorage.getItem("goreun_nl_subscribed")
+  ) {
+    nlBanner.remove();
+    nlBanner = null;
+  } else {
+    wireNewsletterForm(
+      document.getElementById("nl-banner-form"),
+      document.getElementById("nl-banner-done")
+    );
+    var bannerShown = false;
+    var detailsOpened = 0;
+    var showNlBanner = function () {
+      if (bannerShown || !nlBanner) return;
+      bannerShown = true;
+      nlBanner.style.transform = "translateY(0)";
+    };
+    document.getElementById("nl-banner-close").addEventListener("click", function () {
+      nlBanner.style.transform = "";
+      localStorage.setItem("goreun_nl_dismissed", "1");
+      setTimeout(function () { nlBanner && nlBanner.remove(); nlBanner = null; }, 500);
+    });
+    document.querySelectorAll("article details").forEach(function (d) {
+      d.addEventListener("toggle", function () {
+        if (d.open && ++detailsOpened >= 3) showNlBanner();
+      });
+    });
+    window.addEventListener("scroll", function () {
+      var max = document.documentElement.scrollHeight - window.innerHeight;
+      if (max > 0 && window.scrollY / max >= 0.5) showNlBanner();
+    }, { passive: true });
+  }
+}
+
+// ── '이미지로 저장' (html2canvas 동적 로드, 1:1 인스타 카드) ──
+var H2C_URL = "https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js";
+function loadHtml2Canvas() {
+  if (window.html2canvas) return Promise.resolve();
+  return new Promise(function (resolve, reject) {
+    var s = document.createElement("script");
+    s.src = H2C_URL;
+    s.onload = resolve;
+    s.onerror = reject;
+    document.head.appendChild(s);
+  });
+}
+var BIAS_META = [
+  ["progressive", "진보", "#3b82f6"],
+  ["moderate", "중도", "#9ca3af"],
+  ["conservative", "보수", "#ef4444"],
+];
+function buildShareCard(card) {
+  var label = (card.querySelector("h3") || {}).textContent || "";
+  var summaryEl = card.querySelector(".summary-wrap p");
+  var summary = summaryEl ? summaryEl.textContent : "";
+  var catColor = card.style.borderTopColor || "#2563eb";
+  var catEl = card.querySelector('span[class*="font-semibold"]');
+  var cat = catEl ? catEl.textContent : "";
+  var bias = {};
+  try { bias = JSON.parse(card.dataset.bias || "{}"); } catch (e) {}
+  var total = 0;
+  BIAS_META.forEach(function (b) { total += bias[b[0]] || 0; });
+
+  var d = document.createElement("div");
+  d.setAttribute("style",
+    "position:fixed;left:-10990px;top:0;width:1080px;height:1080px;box-sizing:border-box;" +
+    "background:#faf9f7;color:#1c1c1e;padding:100px;display:flex;flex-direction:column;" +
+    "justify-content:space-between;font-family:'Apple SD Gothic Neo','Noto Sans KR','Malgun Gothic',sans-serif;");
+
+  var top = document.createElement("div");
+  var chip = document.createElement("span");
+  chip.setAttribute("style", "display:inline-block;font-size:26px;font-weight:700;color:" + catColor +
+    ";background:" + catColor + "1f;border-radius:999px;padding:8px 26px;margin-bottom:44px;");
+  chip.textContent = cat;
+  var h = document.createElement("div");
+  h.setAttribute("style", "font-size:58px;font-weight:800;line-height:1.35;letter-spacing:-0.5px;margin-bottom:40px;word-break:keep-all;");
+  h.textContent = label;
+  var p = document.createElement("div");
+  p.setAttribute("style", "font-size:31px;line-height:1.75;color:#4b4b50;word-break:keep-all;");
+  p.textContent = summary;
+  top.appendChild(chip); top.appendChild(h); top.appendChild(p);
+
+  var bottom = document.createElement("div");
+  if (total > 0) {
+    var bar = document.createElement("div");
+    bar.setAttribute("style", "display:flex;height:14px;border-radius:999px;overflow:hidden;background:#e6e2da;margin-bottom:16px;");
+    var legend = document.createElement("div");
+    legend.setAttribute("style", "display:flex;justify-content:space-between;font-size:22px;color:#8a8a90;margin-bottom:52px;");
+    BIAS_META.forEach(function (b) {
+      var n = bias[b[0]] || 0;
+      if (n > 0) {
+        var seg = document.createElement("span");
+        seg.setAttribute("style", "width:" + (n / total * 100) + "%;background:" + b[2] + ";");
+        bar.appendChild(seg);
+      }
+      var lg = document.createElement("span");
+      lg.textContent = b[1] + " " + n;
+      legend.appendChild(lg);
+    });
+    bottom.appendChild(bar); bottom.appendChild(legend);
+  }
+  var brand = document.createElement("div");
+  brand.setAttribute("style", "display:flex;align-items:center;gap:20px;border-top:2px solid #e6e2da;padding-top:44px;");
+  var mark = document.createElement("div");
+  mark.setAttribute("style", "width:64px;height:64px;border-radius:15px;background:#2563eb;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:7px;");
+  for (var bi = 0; bi < 3; bi++) {
+    var barEl = document.createElement("div");
+    barEl.setAttribute("style", "width:36px;height:7px;border-radius:4px;background:rgba(255,255,255," + (1 - bi * 0.12) + ");");
+    mark.appendChild(barEl);
+  }
+  var brandText = document.createElement("div");
+  brandText.innerHTML = "";
+  var bt1 = document.createElement("div");
+  bt1.setAttribute("style", "font-size:30px;font-weight:800;");
+  bt1.textContent = "고른뉴스";
+  var bt2 = document.createElement("div");
+  bt2.setAttribute("style", "font-size:22px;color:#8a8a90;");
+  bt2.textContent = "고른뉴스.메인.한국 · AI 중립 뉴스 브리핑";
+  brandText.appendChild(bt1); brandText.appendChild(bt2);
+  brand.appendChild(mark); brand.appendChild(brandText);
+  bottom.appendChild(brand);
+
+  d.appendChild(top); d.appendChild(bottom);
+  return d;
+}
+document.querySelectorAll(".imgsave-btn").forEach(function (btn) {
+  btn.addEventListener("click", function () {
+    var card = btn.closest("article");
+    if (!card) return;
+    toast("이미지 생성 중…");
+    loadHtml2Canvas().then(function () {
+      var node = buildShareCard(card);
+      document.body.appendChild(node);
+      return window.html2canvas(node, { width: 1080, height: 1080, scale: 1, backgroundColor: "#faf9f7" })
+        .then(function (canvas) {
+          node.remove();
+          var a = document.createElement("a");
+          a.download = "goreun-news.png";
+          a.href = canvas.toDataURL("image/png");
+          a.click();
+          toast("이미지가 저장되었습니다");
+        });
+    }).catch(function () { toast("이미지 생성에 실패했습니다"); });
+  });
+});
 
 // ── 모바일: 스크롤 다운 시 헤더 숨김 / 업 시 표시 + Top FAB ──
 var siteHeader = document.getElementById("site-header");
@@ -422,6 +576,55 @@ SCRAPBOOK_SCRIPT = """
 (function () {
   var listEl = document.getElementById("scrap-news");
   var postsEl = document.getElementById("scrap-posts");
+  var OUTLET_BIAS = __OUTLET_BIAS__;
+  var BIAS_META = [
+    ["progressive", "진보", "#3b82f6"],
+    ["moderate", "중도", "#9ca3af"],
+    ["conservative", "보수", "#ef4444"],
+  ];
+
+  // 스크랩한 뉴스의 매체 성향 비율 미니 대시보드 (conic-gradient 도넛)
+  function renderBiasDash(scraps) {
+    var sec = document.getElementById("bias-dash");
+    if (!sec) return;
+    var counts = { progressive: 0, moderate: 0, conservative: 0 };
+    scraps.filter(function (s) { return s.type === "issue"; }).forEach(function (s) {
+      (s.headlines || []).forEach(function (h) {
+        counts[OUTLET_BIAS[h.outlet] || "moderate"]++;
+      });
+    });
+    var total = counts.progressive + counts.moderate + counts.conservative;
+    sec.hidden = total === 0;
+    if (!total) return;
+    var stops = [];
+    var acc = 0;
+    var legend = document.getElementById("bias-legend");
+    legend.textContent = "";
+    BIAS_META.forEach(function (b) {
+      var n = counts[b[0]];
+      var pct = (n / total) * 100;
+      if (n > 0) {
+        stops.push(b[2] + " " + acc + "% " + (acc + pct) + "%");
+        acc += pct;
+      }
+      var li = document.createElement("li");
+      li.className = "flex items-center gap-2";
+      var dot = document.createElement("span");
+      dot.className = "w-2.5 h-2.5 rounded-full shrink-0";
+      dot.style.background = b[2];
+      var lab = document.createElement("span");
+      lab.className = "flex-1";
+      lab.textContent = b[1];
+      var val = document.createElement("span");
+      val.className = "tabular-nums text-neutral-500 dark:text-neutral-400";
+      val.textContent = n + "건 (" + Math.round(pct) + "%)";
+      li.appendChild(dot); li.appendChild(lab); li.appendChild(val);
+      legend.appendChild(li);
+    });
+    document.getElementById("bias-donut").style.background =
+      "conic-gradient(" + stops.join(",") + ")";
+    document.getElementById("bias-total").textContent = total;
+  }
 
   function el(tag, cls, text) {
     var node = document.createElement(tag);
@@ -440,6 +643,7 @@ SCRAPBOOK_SCRIPT = """
     document.getElementById("scrap-empty").hidden = scraps.length > 0;
     document.getElementById("scrap-news-sec").hidden = news.length === 0;
     document.getElementById("scrap-posts-sec").hidden = posts.length === 0;
+    renderBiasDash(scraps);
     listEl.textContent = "";
     postsEl.textContent = "";
 
@@ -543,6 +747,7 @@ def _page(
     *, title: str, active: str, generated_at: str, feed: str,
     updated_label: str, head_extra: str, tabs_html: str, after_header: str,
     main_html: str, footer_notes: list[str], site_stamp: str, extra_script: str = "",
+    banner_html: str = "",
 ) -> str:
     nav = "".join(
         f'<a href="{href}" class="px-2 py-1 rounded-lg text-sm '
@@ -620,6 +825,7 @@ def _page(
   </div>
 </footer>
 <button type="button" id="to-top" hidden aria-label="맨 위로" class="fixed bottom-6 right-5 z-40 w-11 h-11 rounded-full bg-neutral-900 text-stone-50 dark:bg-neutral-100 dark:text-neutral-900 shadow-lg text-lg">↑</button>
+{banner_html}
 <script>{BASE_SCRIPT}</script>
 {f"<script>{extra_script}</script>" if extra_script else ""}
 {sentry}
@@ -708,7 +914,8 @@ def _render_issue(issue: dict, index: int) -> str:
         f'{_esc(h["title"])}</span></a></li>'
         for h in heads
     )
-    return f"""<article id="{anchor}" class="rounded-xl border border-stone-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 p-5 border-t-[3px]" style="border-top-color:{color}" data-cat="{_esc(issue["category"])}">
+    bias_attr = _esc(json.dumps(issue.get("bias") or {}, ensure_ascii=False))
+    return f"""<article id="{anchor}" class="rounded-xl border border-stone-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 p-5 border-t-[3px]" style="border-top-color:{color}" data-cat="{_esc(issue["category"])}" data-bias="{bias_attr}">
   <div class="flex items-center justify-between text-xs">
     <span class="font-semibold rounded-full px-2.5 py-0.5" style="color:{color};background:{color}1f">{_esc(issue["category"])}</span>
     <span class="flex items-center gap-2">
@@ -729,7 +936,8 @@ def _render_issue(issue: dict, index: int) -> str:
       <div class="mt-3">{_render_bias_bar(issue.get("bias"))}</div>
       <ul class="relative ml-1.5 pl-4 border-l-2 border-stone-200 dark:border-neutral-700 flex flex-col gap-3">{rows}</ul>
     </details>
-    <button type="button" class="share-btn shrink-0 self-start rounded-lg border border-stone-200 dark:border-neutral-600 px-3 py-1.5 text-xs text-neutral-500 dark:text-neutral-400 hover:text-blue-600 hover:border-blue-500" data-anchor="{anchor}" data-title="{_esc(issue["label"])}" data-text="{_esc(issue["summary"])}">공유하기</button>
+    <button type="button" class="share-btn shrink-0 self-start rounded-lg border border-stone-200 dark:border-neutral-600 px-3 py-1.5 text-xs text-neutral-500 dark:text-neutral-400 hover:text-blue-600 hover:border-blue-500" data-anchor="{anchor}" data-title="{_esc(issue["label"])}" data-text="{_esc(issue["summary"])}">공유</button>
+    <button type="button" class="imgsave-btn shrink-0 self-start rounded-lg border border-stone-200 dark:border-neutral-600 px-3 py-1.5 text-xs text-neutral-500 dark:text-neutral-400 hover:text-blue-600 hover:border-blue-500" title="인스타그램용 정사각 이미지로 저장">이미지 저장</button>
   </div>
 </article>"""
 
@@ -825,9 +1033,21 @@ def build(briefing: dict, community: list[dict], out_dir: Path) -> Path:
     )
     updated = f"{now.strftime('%m월 %d일 %H:%M')} 업데이트 · 매시간 갱신"
 
+    nl_banner = f"""<div id="nl-banner" style="transform:translateY(150%)" class="fixed bottom-5 left-5 z-40 w-80 max-w-[calc(100vw-2.5rem)] rounded-xl border border-stone-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 shadow-xl p-4 transition-transform duration-500">
+  <button type="button" id="nl-banner-close" class="absolute top-2 right-3 text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200" aria-label="닫기">✕</button>
+  <p class="text-sm font-semibold mb-0.5">내일 아침 핵심 뉴스도 요약해 드릴까요?</p>
+  <p class="text-xs text-neutral-400 mb-2.5">매일 아침 7시, 메일로 보내드려요.</p>
+  <form id="nl-banner-form" class="flex gap-2" data-action="{_esc(config.NEWSLETTER_FORM_ACTION)}" data-entry="{_esc(config.NEWSLETTER_FORM_ENTRY)}">
+    <input type="email" required placeholder="you@example.com" class="min-w-0 flex-1 rounded-lg border border-stone-300 dark:border-neutral-600 bg-stone-50 dark:bg-neutral-900 px-3 py-1.5 text-sm placeholder:text-neutral-400 focus:outline-none focus:border-blue-500">
+    <button type="submit" class="shrink-0 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-3.5 py-1.5">구독</button>
+  </form>
+  <p id="nl-banner-done" hidden class="text-sm font-medium text-emerald-600 dark:text-emerald-400">구독이 완료되었습니다!</p>
+</div>"""
+
     page = _page(
         title=f"{config.SITE_TITLE} — {config.SITE_TAGLINE}",
         active="news",
+        banner_html=nl_banner,
         generated_at=generated_at,
         feed="briefing.json",
         updated_label=updated,
@@ -1053,6 +1273,19 @@ def build_scrapbook_page(
     out_dir: Path, generated_at: str, now: datetime, updated: str, stamp: str
 ) -> Path:
     main_html = """<div class="max-w-3xl mx-auto py-6 flex flex-col gap-6">
+  <section id="bias-dash" hidden class="rounded-xl border border-stone-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 p-5">
+    <h2 class="text-sm font-bold mb-1">내가 주로 읽는 뉴스의 성향 비율</h2>
+    <p class="text-[11px] text-neutral-400 mb-4">스크랩한 뉴스에 참여한 매체들의 성향 분포입니다 (참고용 일반 분류)</p>
+    <div class="flex items-center gap-7">
+      <div id="bias-donut" class="w-28 h-28 rounded-full shrink-0 flex items-center justify-center">
+        <div class="w-[4.5rem] h-[4.5rem] rounded-full bg-white dark:bg-neutral-800 flex flex-col items-center justify-center">
+          <span id="bias-total" class="text-lg font-bold tabular-nums">0</span>
+          <span class="text-[10px] text-neutral-400">매체 집계</span>
+        </div>
+      </div>
+      <ul id="bias-legend" class="flex-1 flex flex-col gap-2 text-sm"></ul>
+    </div>
+  </section>
   <div id="scrap-empty" hidden class="text-center text-sm text-neutral-400 py-16">아직 스크랩한 글이 없습니다.<br>뉴스 카드나 커뮤니티 글의 ☆를 눌러 저장해 보세요.</div>
   <section id="scrap-news-sec" hidden>
     <h2 class="text-sm font-bold mb-3">뉴스</h2>
@@ -1076,7 +1309,9 @@ def build_scrapbook_page(
         main_html=main_html,
         footer_notes=["스크랩한 글은 이 브라우저의 로컬 저장소(localStorage)에만 저장됩니다."],
         site_stamp=stamp,
-        extra_script=SCRAPBOOK_SCRIPT,
+        extra_script=SCRAPBOOK_SCRIPT.replace(
+            "__OUTLET_BIAS__", json.dumps(config.OUTLET_BIAS, ensure_ascii=False)
+        ),
     )
     out_path = out_dir / "scrapbook.html"
     out_path.write_text(page, encoding="utf-8")

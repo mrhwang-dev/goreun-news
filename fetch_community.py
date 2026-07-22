@@ -40,10 +40,20 @@ SEEN_TTL_SECONDS = 48 * 3600
 NEW_POST_WINDOW_SECONDS = 3600
 
 
-def _get(url: str) -> str:
+def _get(url: str, _depth: int = 0) -> str:
     req = urllib.request.Request(url, headers=HEADERS)
-    with urllib.request.urlopen(req, timeout=15) as resp:
-        return resp.read().decode("utf-8", errors="replace")
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            return resp.read().decode("utf-8", errors="replace")
+    except urllib.error.HTTPError as e:
+        # py3.9 urllib는 308을 추적하지 않으므로 수동 추적
+        if e.code in (301, 302, 307, 308) and _depth < 3:
+            location = e.headers.get("Location")
+            if location:
+                import urllib.parse as _up
+
+                return _get(_up.urljoin(url, location), _depth + 1)
+        raise
 
 
 def _clean_title(fragment: str) -> str:
@@ -99,7 +109,7 @@ SOURCES = [
     {"name": "루리웹", "url": "https://bbs.ruliweb.com/best/all/now", "parse": _parse_ruliweb},
     # 더쿠는 데이터센터 IP(GitHub Actions)에서 403이 잦다 — 실패해도 다른 소스는 유지됨
     {"name": "더쿠", "url": "https://theqoo.net/hot", "parse": _parse_theqoo},
-    {"name": "이토랜드", "url": "https://www.etoland.co.kr/bbs/board.php?bo_table=etohumor07", "parse": _parse_etoland},
+    {"name": "이토랜드", "url": "https://etoland.co.kr/b/etohumor07/list", "parse": _parse_etoland},
 ]
 
 
