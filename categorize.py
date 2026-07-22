@@ -71,12 +71,8 @@ OUTLET_CATEGORY_PRIOR: dict[str, str] = {
 }
 
 
-def classify(titles: list[str], outlets: list[str]) -> tuple[str | None, float]:
-    """클러스터 제목·출처로 분야를 채점한다.
-
-    반환: (확신 판정 분야 또는 None, 1위-2위 점수차)
-    None이면 호출자가 LLM 분류를 사용한다.
-    """
+def _score(titles: list[str], outlets: list[str]) -> dict[str, float]:
+    """분야별 점수(키워드 가중 + 전문지 사전확률)를 계산한다."""
     scores: dict[str, float] = {cat: 0.0 for cat in CATEGORY_KEYWORDS}
     text = " ".join(titles)
     for cat, keywords in CATEGORY_KEYWORDS.items():
@@ -88,10 +84,30 @@ def classify(titles: list[str], outlets: list[str]) -> tuple[str | None, float]:
         prior_cat = OUTLET_CATEGORY_PRIOR.get(outlet)
         if prior_cat:
             scores[prior_cat] += 1.0
+    return scores
 
+
+def classify(titles: list[str], outlets: list[str]) -> tuple[str | None, float]:
+    """클러스터 제목·출처로 분야를 채점한다.
+
+    반환: (확신 판정 분야 또는 None, 1위-2위 점수차)
+    None이면 호출자가 LLM 분류를 사용한다.
+    """
+    scores = _score(titles, outlets)
     ranked = sorted(scores.items(), key=lambda x: -x[1])
     top_cat, top_score = ranked[0]
     margin = top_score - ranked[1][1]
     if top_score >= 2 and margin >= CONFIDENT_MARGIN:
         return top_cat, margin
     return None, margin
+
+
+def best_guess(titles: list[str], outlets: list[str]) -> str:
+    """무-API 라벨링용: 확신도와 무관하게 최고 점수 분야를 반환한다.
+
+    classify가 None을 주는(모호한) 경우에도 반드시 하나를 고른다. 모든 분야
+    점수가 0이면 범용 분야인 '사회'로 둔다.
+    """
+    scores = _score(titles, outlets)
+    top_cat, top_score = max(scores.items(), key=lambda x: x[1])
+    return top_cat if top_score > 0 else "사회"

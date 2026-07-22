@@ -165,6 +165,15 @@ GEMINI_MODEL = os.environ.get("GEMINI_MODEL") or "gemini-flash-latest"
 # 다시 켜면 상위 이슈 Claude 정밀 요약(편향 교차 검증)이 복원된다.
 ENABLE_CLAUDE = os.environ.get("ENABLE_CLAUDE", "").strip().lower() in ("1", "true", "yes", "on")
 
+# LLM 라벨링 사용 여부 (기본 OFF = 무-API 모드).
+# OFF: LLM(Gemini/Claude)을 전혀 호출하지 않고 알고리즘만으로 이슈를 만든다 —
+#      제목=대표 헤드라인 원문, 분야=키워드 분류(categorize). 정밀요약·정책요약도 생략.
+#      RSS 수집·클러스터링·성향·속보는 원래 API가 필요 없으므로 그대로 동작한다.
+#      → API 비용 0원, 매시간 신선한 뉴스가 안정적으로 배포된다(품질만 소폭 낮음).
+# ON:  LLM으로 제목·요약을 다듬고, LLM이 못 단 클러스터만 알고리즘으로 보강한다.
+#      Gemini 유료 티어나 Claude 크레딧이 있을 때 ENABLE_LLM_LABELING=1 로 켠다.
+ENABLE_LLM_LABELING = os.environ.get("ENABLE_LLM_LABELING", "").strip().lower() in ("1", "true", "yes", "on")
+
 # Claude 정밀 요약(편향 교차 검증 + 3문장 리포트)을 적용할 상위 이슈 수.
 # 나머지 이슈는 Gemini 1차 분류의 라벨·요약을 그대로 쓴다.
 REFINE_TOP_ISSUES = 12

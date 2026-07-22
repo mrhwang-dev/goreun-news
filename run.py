@@ -127,6 +127,53 @@ def detect_breaking(items: list[dict]) -> list[dict]:
     ]
 
 
+# 대표 제목으로 부적절한 유형(의견·화보·영상). 한 매체의 논조가 이슈 제목으로
+# 올라가 중립성을 해치는 것을 막는다.
+_NON_NEWS_TITLE_MARKERS = (
+    "[사설]", "[칼럼]", "[기고]", "[오피니언]", "[시론]", "[기자수첩]", "[데스크",
+    "[사진]", "[포토]", "[화보]", "[영상]", "[만평]", "[인터뷰]", "[일문일답]", "[속보]",
+)
+
+
+def _representative_title(cluster: list[dict]) -> str:
+    """무-API 라벨: 클러스터 대표 제목 = 길이 중앙값 제목.
+
+    의견·화보성 제목([사설]·[포토] 등)은 후보에서 제외해(가능하면) 중립 뉴스
+    헤드라인을 고르고, 속보 말머리만 남은 과도한 축약·군더더기 긴 제목의 양극단을
+    길이 중앙값으로 피한다.
+    """
+    titles = [m["title"] for m in cluster]
+    news = [t for t in titles if not any(mk in t for mk in _NON_NEWS_TITLE_MARKERS)]
+    pool = sorted(news or titles, key=len)
+    return pool[len(pool) // 2]
+
+
+def _algorithmic_labels(clusters: list[list[dict]], have: set[int]) -> dict[int, dict]:
+    """LLM이 라벨을 못 단 클러스터를 알고리즘만으로 라벨링한다 (무-API 폴백).
+
+    - 제목: 대표 헤드라인 원문 (원래도 '제목 원문 그대로' 원칙과 부합)
+    - 분야: categorize.best_guess (키워드 + 전문지 사전확률)
+    - 요약: LLM 없이 생성 불가 → 매체 수 안내 문구로 대체
+    노이즈 방지로 '2개 매체 이상' 보도한 클러스터만 채택한다(단독 잡글 제외).
+    """
+    from categorize import best_guess
+
+    out: dict[int, dict] = {}
+    for ci, cluster in enumerate(clusters):
+        if ci in have:
+            continue
+        outlets = [m["outlet"] for m in cluster]
+        n = len(set(outlets))
+        if n < 2:
+            continue
+        out[ci] = {
+            "label": _representative_title(cluster),
+            "summary": f"{n}개 매체가 보도한 이슈입니다. 아래 ‘매체별 헤드라인’에서 원문을 확인하세요.",
+            "category": best_guess([m["title"] for m in cluster], outlets),
+        }
+    return out
+
+
 def build_briefing(bias_model: dict | None = None) -> dict:
     from bias_model import effective_bias
     from cluster import allocate_slots, cluster_items
@@ -142,7 +189,13 @@ def build_briefing(bias_model: dict | None = None) -> dict:
     )[: config.CANDIDATE_ISSUES]
     print(f"클러스터 {len(clusters)}개 (라벨링 대상)")
 
-    labels = label_clusters(clusters)
+    # 무-API 모드(config.ENABLE_LLM_LABELING=False)면 LLM을 아예 호출하지 않는다.
+    labels = label_clusters(clusters) if config.ENABLE_LLM_LABELING else {}
+    # LLM이 라벨링하지 못한 클러스터(무-API·할당량 소진·오류)는 알고리즘으로 채운다.
+    algo = _algorithmic_labels(clusters, set(labels))
+    if algo:
+        labels.update(algo)
+        print(f"[무-API 라벨] 알고리즘으로 {len(algo)}개 클러스터 라벨링")
 
     from categorize import classify
 
@@ -207,15 +260,19 @@ def build_briefing(bias_model: dict | None = None) -> dict:
     print(f"분야 알고리즘 교정: {algo_overrides}건")
     print("분야별 슬롯:", slots)
 
-    # 상위 핫이슈만 Claude 정밀 요약 (편향 교차 검증, 실패 시 1차 요약 유지)
-    refine_top_issues(selected)
+    # 상위 핫이슈만 LLM 정밀 요약 (편향 교차 검증, 실패 시 1차 요약 유지).
+    # 무-API 모드에선 추가 LLM 호출을 하지 않으므로 생략한다.
+    if config.ENABLE_LLM_LABELING:
+        refine_top_issues(selected)
 
-    try:
-        articles = fetch_policy_news()
-        policy = summarize_policy(articles)
-    except Exception as e:
-        print(f"[경고] 정책 브리핑 단계 실패 — 건너뜀: {e}")
-        policy = []
+    # 정책 브리핑도 LLM 요약이 필요하므로 무-API 모드에선 생략한다.
+    policy = []
+    if config.ENABLE_LLM_LABELING:
+        try:
+            articles = fetch_policy_news()
+            policy = summarize_policy(articles)
+        except Exception as e:
+            print(f"[경고] 정책 브리핑 단계 실패 — 건너뜀: {e}")
     print(f"정책 브리핑 {len(policy)}건")
 
     # 블라인드스팟: 한쪽 성향 매체만 보도한 이슈 (Ground News 방식)
@@ -315,16 +372,27 @@ def main() -> None:
 
         briefing = build_briefing(bias_model)
 
-        # 안전장치: 본 브리핑 이슈가 0건이면 AI 라벨링(Gemini) 실패로 판단한다.
-        # (헤드라인 수집·속보는 정상인데 label_clusters가 전량 실패하면 이 상태가 된다.)
-        # 이대로 아카이브·배포하면 정상 뉴스가 통째로 사라진 빈 사이트가 나가고,
-        # 뒤이어 게임 마이그레이션만 남아 '게임만 N건'처럼 보인다. 즉시 중단해
-        # 마지막 정상 배포를 유지하고, 다음 정상 실행이 사이트를 복구하도록 한다.
-        if not briefing.get("issues"):
-            raise SystemExit(
-                "[중단] 본 브리핑 이슈 0건 — AI 라벨링 실패로 판단. "
-                "아카이브/배포를 건너뛰어 기존 사이트를 유지합니다."
+        # 안전장치: 본 브리핑 이슈가 0건이면 AI 라벨링(Gemini 등)이 전량 실패한 것.
+        # (헤드라인 수집·속보는 정상인데 label_clusters가 실패하면 이 상태 — 주로
+        #  LLM 할당량 소진/장애.) 그대로 배포하면 정상 뉴스가 사라진 빈 사이트가
+        #  나가고 게임 마이그레이션만 남아 '게임만 N건'처럼 보인다.
+        # → 빈 사이트 대신 '마지막 정상 스냅샷'의 뉴스로 폴백 배포한다. 단, 이 실행분은
+        #    아카이브하지 않는다(스테일 이슈가 새 타임스탬프로 중복 적재되는 것 방지).
+        labeling_failed = not briefing.get("issues")
+        if labeling_failed:
+            prev_good = next((entry for entry in prev_snaps if entry[1].get("issues")), None)
+            if not prev_good:
+                raise SystemExit(
+                    "[중단] 본 브리핑 이슈 0건이고 폴백할 정상 스냅샷도 없음 — 기존 사이트 유지."
+                )
+            good_stamp, good_briefing = prev_good
+            print(
+                f"[폴백] AI 라벨링 실패 — 마지막 정상 스냅샷({good_stamp})의 "
+                f"이슈 {len(good_briefing['issues'])}건으로 배포(이번 실행분은 아카이브 안 함)."
             )
+            briefing["issues"] = good_briefing["issues"]
+            briefing["heat"] = good_briefing.get("heat", {})
+            briefing["slots"] = good_briefing.get("slots", {})
 
         from fetch_community import fetch_community
 
@@ -334,16 +402,21 @@ def main() -> None:
             print(f"[경고] 커뮤니티 단계 실패 — 건너뜀: {e}")
             community = []
 
-        # 아카이브: 현재 브리핑을 저장소 archive/에 스냅샷 (워크플로우가 커밋)
+        # 아카이브: 현재 브리핑을 저장소 archive/에 스냅샷 (워크플로우가 커밋).
+        # 폴백 배포(라벨링 실패)일 땐 아카이브하지 않고 기존 스냅샷으로 렌더한다.
         kst = timezone(timedelta(hours=9))
-        stamp = datetime.now(kst).strftime("%Y-%m-%d-%H")
-        archive_dir = ROOT / "archive"
-        archive_dir.mkdir(exist_ok=True)
-        (archive_dir / f"{stamp}.json").write_text(
-            json.dumps(briefing, ensure_ascii=False), encoding="utf-8"
-        )
-        # 재로드 없이 기존 로드분 + 이번 스냅샷으로 구성 (이중 로드 제거)
-        snapshots = ([(stamp, briefing)] + prev_snaps)[:ARCHIVE_KEEP]
+        if labeling_failed:
+            snapshots = prev_snaps[:ARCHIVE_KEEP]
+            stamp = good_stamp
+        else:
+            stamp = datetime.now(kst).strftime("%Y-%m-%d-%H")
+            archive_dir = ROOT / "archive"
+            archive_dir.mkdir(exist_ok=True)
+            (archive_dir / f"{stamp}.json").write_text(
+                json.dumps(briefing, ensure_ascii=False), encoding="utf-8"
+            )
+            # 재로드 없이 기존 로드분 + 이번 스냅샷으로 구성 (이중 로드 제거)
+            snapshots = ([(stamp, briefing)] + prev_snaps)[:ARCHIVE_KEEP]
         # 공유·RSS 영구 링크는 이번 시각의 스냅샷을 가리킨다
         punycode = config.SITE_DOMAIN.encode("idna").decode()
         build_site.set_share_base(f"https://{punycode}/archive/{stamp}/")
