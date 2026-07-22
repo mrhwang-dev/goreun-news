@@ -126,7 +126,7 @@ REFINE_TOP_ISSUES = 12
 SITE_TITLE = "고른뉴스"
 SITE_TAGLINE = "골라 담아, 고르게 전합니다"
 # 현재 연결 도메인 (내도메인.한국 무료 로마자 도메인). goreun.news 구매 시 교체.
-SITE_DOMAIN = "www.goreunnews.kro.kr"
+SITE_DOMAIN = "goreunnews.kro.kr"
 
 # Sentry 버그 제보 위젯 — 로더 스크립트 공개 키 (cwworks/goreun-news 프로젝트).
 # 브라우저용 공개 DSN 키라 저장소에 포함해도 안전하다. 비우면 위젯 미노출.
