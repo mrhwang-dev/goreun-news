@@ -1683,6 +1683,24 @@ COMMUNITY_SIDEBAR_SCRIPT = """
 """
 
 
+def _fmt_count(v: int) -> str:
+    return f"{v / 10000:.1f}만" if v >= 10000 else f"{v:,}"
+
+
+def _metric_line(p: dict) -> str:
+    """조회·추천·댓글 지표 라인 (있는 것만)."""
+    parts = []
+    if p.get("views"):
+        parts.append(f"👁 {_fmt_count(p['views'])}")
+    if p.get("recommends"):
+        parts.append(f"👍 {_fmt_count(p['recommends'])}")
+    if p.get("comments"):
+        parts.append(f"💬 {_fmt_count(p['comments'])}")
+    if not parts:
+        return ""
+    return f'<div class="mt-1.5 text-[11px] text-neutral-400 tabular-nums">{" · ".join(parts)}</div>'
+
+
 def _trend_keywords(posts: list[dict], top_n: int = 8) -> list[str]:
     """게시글 제목에서 빈출 키워드를 추출한다 (간단 토큰 빈도)."""
     import re as _re
@@ -1744,6 +1762,7 @@ def build_community_page(
     <span class="flex-1 min-w-0 text-sm leading-snug line-clamp-2">{_esc(p["title"])}</span>
     {thumb_html}
   </a>
+  {_metric_line(p)}
 </article>""")
 
     trend_chips = "".join(
