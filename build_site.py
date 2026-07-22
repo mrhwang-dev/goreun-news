@@ -129,7 +129,7 @@ if (tickerItems.length) {
 
 // ── 오프라인 페일세이프: 서비스워커 캐시 + 경고 배너 ──
 if ("serviceWorker" in navigator) {
-  navigator.serviceWorker.register("sw.js").catch(function () {});
+  navigator.serviceWorker.register("/sw.js").catch(function () {});
 }
 function showOfflineBanner() {
   var banner = document.getElementById("offline-banner");
@@ -224,7 +224,7 @@ document.querySelectorAll("details.headlines-toggle").forEach(function (d) {
 // ── 많이 본 이슈 TOP 5 (상위 18개 카드의 조회수 조회) ──
 var tvPanel = document.getElementById("top-viewed-panel");
 if (tvPanel) {
-  var tvCards = Array.prototype.slice.call(document.querySelectorAll("article[data-cat]")).slice(0, 18);
+  var tvCards = Array.prototype.slice.call(document.querySelectorAll("article[data-cat]")).slice(0, 12);
   Promise.all(tvCards.map(function (card) {
     var label = (card.querySelector("h3") || {}).textContent || "";
     return fetch(ABACUS + "get/goreun-news/iv-" + djb2(label))
@@ -1255,7 +1255,7 @@ def _render_issue(issue: dict, index: int) -> str:
         + f'<a class="flex items-start gap-2 text-[13px] hover:text-blue-600 dark:hover:text-blue-400" '
         f'href="{_esc(h["link"])}" target="_blank" rel="noopener nofollow">'
         + (
-            f'<time class="w-9 shrink-0 pt-px text-[11px] text-neutral-400 tabular-nums">{_esc(h["time"])}</time>'
+            f'<time class="min-w-[2.25rem] shrink-0 pt-px text-[11px] text-neutral-400 tabular-nums whitespace-nowrap">{_esc(h["time"])}</time>'
             if h.get("time")
             else ""
         )

@@ -84,6 +84,16 @@ def load_env_file() -> None:
         os.environ.setdefault(key.strip(), value.strip())
 
 
+def _headline_time_label(ts) -> str:
+    """타임라인 시간 라벨. 오늘은 HH:MM, 다른 날짜는 MM.DD HH:MM —
+    날짜가 섞인 클러스터에서 시간이 뒤죽박죽으로 보이는 문제 방지."""
+    kst = timezone(timedelta(hours=9))
+    local = ts.astimezone(kst)
+    if local.date() == datetime.now(kst).date():
+        return local.strftime("%H:%M")
+    return local.strftime("%m.%d %H:%M")
+
+
 def detect_breaking(items: list[dict]) -> list[dict]:
     """[속보]/[1보]/[긴급] 말머리가 붙은 최근 기사를 골라낸다 (제목 원문 유지)."""
     cutoff = datetime.now(timezone.utc) - timedelta(hours=BREAKING_MAX_AGE_HOURS)
@@ -161,7 +171,7 @@ def build_briefing(bias_model: dict | None = None) -> dict:
                         "outlet": m["outlet"],
                         "title": m["title"],
                         "link": m["link"],
-                        "time": m["ts"].astimezone(timezone(timedelta(hours=9))).strftime("%H:%M"),
+                        "time": _headline_time_label(m["ts"]),
                         "bias": effective_bias(m["outlet"], bias_model),
                     }
                     for m in sorted(cluster, key=lambda m: m["ts"])[
