@@ -19,7 +19,15 @@ import time
 import urllib.request
 from pathlib import Path
 
-UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
+UA = (
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
+)
+HEADERS = {
+    "User-Agent": UA,
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "ko-KR,ko;q=0.9",
+}
 
 POSTS_PER_SOURCE = 12
 
@@ -33,7 +41,7 @@ NEW_POST_WINDOW_SECONDS = 3600
 
 
 def _get(url: str) -> str:
-    req = urllib.request.Request(url, headers={"User-Agent": UA})
+    req = urllib.request.Request(url, headers=HEADERS)
     with urllib.request.urlopen(req, timeout=15) as resp:
         return resp.read().decode("utf-8", errors="replace")
 
@@ -72,9 +80,26 @@ def _parse_theqoo(page: str) -> list[dict]:
     return posts
 
 
+def _parse_etoland(page: str) -> list[dict]:
+    posts = []
+    for m in re.finditer(r'<a[^>]+href="(/b/etohumor07/view/[^"]+)"[^>]*>', page):
+        title_m = re.search(r'title="([^"]{4,})"', m.group(0))
+        if not title_m:
+            continue
+        title = _clean_title(title_m.group(1))
+        if len(title) < 4 or any(marker in title for marker in NOTICE_MARKERS):
+            continue
+        posts.append(
+            {"title": title, "link": "https://www.etoland.co.kr" + html.unescape(m.group(1))}
+        )
+    return posts
+
+
 SOURCES = [
     {"name": "루리웹", "url": "https://bbs.ruliweb.com/best/all/now", "parse": _parse_ruliweb},
+    # 더쿠는 데이터센터 IP(GitHub Actions)에서 403이 잦다 — 실패해도 다른 소스는 유지됨
     {"name": "더쿠", "url": "https://theqoo.net/hot", "parse": _parse_theqoo},
+    {"name": "이토랜드", "url": "https://www.etoland.co.kr/bbs/board.php?bo_table=etohumor07", "parse": _parse_etoland},
 ]
 
 

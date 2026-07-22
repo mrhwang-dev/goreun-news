@@ -916,6 +916,7 @@ def build_seo_files(
 SOURCE_BADGE = {
     "루리웹": "bg-blue-600 text-white",
     "더쿠": "bg-gray-700 text-white",
+    "이토랜드": "bg-orange-500 text-white",
 }
 
 _TREND_STOPWORDS = {

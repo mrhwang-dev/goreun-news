@@ -45,10 +45,13 @@
 | 소스 | 수집 방식 | 확인 사항 (2026-07-22) |
 |---|---|---|
 | 루리웹 베스트 | HTML (bbs.ruliweb.com/best/all/now) | robots.txt에서 /best 허용 |
-| 더쿠 HOT | HTML (theqoo.net/hot) | robots.txt 미제공, 공지글 필터 적용 |
+| 더쿠 HOT | HTML (theqoo.net/hot) | robots.txt 미제공, 공지글 필터 적용. 데이터센터 IP(Actions)에서 403이 잦아 실패 시 자동 제외 |
+| 이토랜드 유머 | HTML (etoland.co.kr) | robots.txt 전면 허용(Allow: /) |
 
-제외: 클리앙(추천 페이지 410), 오늘의유머(RSS 중단), 개드립(403 차단),
-에펨코리아(수집 차단 정책), 뽐뿌(핫게시물 파싱 불가).
+제외: 클리앙(추천 페이지 410), 오늘의유머(RSS 중단),
+개드립(robots에 AI 크롤러 명시 차단 — 회색지대 회피), 에펨코리아(수집 차단 정책),
+뽐뿌(핫게시물 파싱 불가, 이슈 RSS는 정치게시판이라 부적합),
+네이트판(robots.txt 일반 봇 전면 불허).
 
 ## 사용하지 않기로 한 소스
 
