@@ -55,6 +55,23 @@ def _wrap(text: str, limit: int, max_lines: int = 2) -> list[str]:
     return lines
 
 
+def build_icon(out_path: Path, size: int = 512) -> Path | None:
+    """PWA/파비콘용 브랜드 마크 아이콘 PNG."""
+    try:
+        img = Image.new("RGB", (size, size), "#2563eb")
+        d = ImageDraw.Draw(img)
+        bar_w, bar_h = int(size * 0.56), int(size * 0.11)
+        bx = (size - bar_w) // 2
+        for i, color in enumerate(("#ffffff", "#e3e8fb", "#c9d3f5")):
+            by = int(size * (0.26 + i * 0.18))
+            d.rounded_rectangle([bx, by, bx + bar_w, by + bar_h], radius=bar_h // 2, fill=color)
+        img.save(out_path, "PNG")
+        return out_path
+    except Exception as e:
+        print(f"[경고] 아이콘 생성 실패: {e}")
+        return None
+
+
 def build_og(briefing: dict, out_path: Path, generated_at: datetime) -> Path | None:
     try:
         W, H = 1200, 630

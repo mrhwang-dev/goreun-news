@@ -20,7 +20,7 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import config
-from og_image import CATEGORY_COLORS, build_og
+from og_image import CATEGORY_COLORS, build_icon, build_og
 
 # ── 공통 조각 ───────────────────────────────────────────────────────────
 
@@ -561,7 +561,11 @@ window.sentryOnLoad = function () {
         nameLabel: "이름", namePlaceholder: "이름 (선택)",
         emailLabel: "이메일", emailPlaceholder: "이메일 (선택)",
         messageLabel: "내용", messagePlaceholder: "발견한 문제나 개선 아이디어를 알려주세요",
+        isRequiredLabel: "(필수)",
+        addScreenshotButtonLabel: "스크린샷 첨부",
+        removeScreenshotButtonLabel: "스크린샷 제거",
         submitButtonLabel: "보내기", cancelButtonLabel: "취소",
+        confirmButtonLabel: "확인",
         successMessageText: "제보해 주셔서 감사합니다.",
       }),
     ],
@@ -784,6 +788,9 @@ def _page(
 <meta name="description" content="여러 언론사의 헤드라인을 교차 확인해 매시간 정리하는 중립 뉴스 브리핑">
 {head_extra}
 <link rel="icon" href="{FAVICON_SVG}">
+<link rel="manifest" href="site.webmanifest">
+<link rel="apple-touch-icon" href="icon-512.png">
+<meta name="theme-color" content="#2563eb">
 <script src="https://cdn.tailwindcss.com"></script>
 <script>tailwind.config = {{ darkMode: "media" }}</script>
 <style type="text/tailwindcss">{CUSTOM_STYLE}</style>
@@ -1061,6 +1068,27 @@ def build(briefing: dict, community: list[dict], out_dir: Path) -> Path:
     (out_dir / "index.html").write_text(page, encoding="utf-8")
     (out_dir / "sw.js").write_text(SERVICE_WORKER, encoding="utf-8")
 
+    # PWA: 홈 화면 설치용 매니페스트 + 아이콘
+    build_icon(out_dir / "icon-512.png")
+    (out_dir / "site.webmanifest").write_text(
+        json.dumps(
+            {
+                "name": config.SITE_TITLE,
+                "short_name": config.SITE_TITLE,
+                "description": config.SITE_TAGLINE,
+                "start_url": "./",
+                "display": "standalone",
+                "background_color": "#faf9f7",
+                "theme_color": "#2563eb",
+                "icons": [
+                    {"src": "icon-512.png", "sizes": "512x512", "type": "image/png"}
+                ],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
     build_community_page(community, out_dir, generated_at, now, updated, stamp)
     build_scrapbook_page(out_dir, generated_at, now, updated, stamp)
     build_seo_files(briefing, out_dir, punycode_domain, now)
@@ -1242,8 +1270,40 @@ def build_community_page(
   {ad_slot("community-1")}
 </aside>"""
 
+    # 베스트 오브 베스트: 각 커뮤니티 1위 글 + HOT 글을 상단에 크로스 커뮤니티로
+    seen_links: set[str] = set()
+    best_posts: list[dict] = []
+    first_of_source: set[str] = set()
+    for p in posts:
+        is_first = p["source"] not in first_of_source
+        if is_first:
+            first_of_source.add(p["source"])
+        if (is_first or p.get("hot")) and p["link"] not in seen_links:
+            seen_links.add(p["link"])
+            best_posts.append(p)
+    best_cards = "".join(
+        f"""<a href="{_esc(p["link"])}" target="_blank" rel="noopener nofollow" class="block rounded-lg border border-amber-200 dark:border-amber-500/30 bg-amber-50/70 dark:bg-amber-500/10 p-3.5 transition-all duration-200 hover:-translate-y-1 hover:shadow-md">
+  <div class="flex items-center gap-1.5 mb-1">
+    <span class="text-[10px] font-bold text-amber-600 dark:text-amber-400">👑 BEST</span>
+    <span class="text-[10px] rounded-full px-1.5 py-0.5 {SOURCE_BADGE.get(p["source"], "bg-stone-500 text-white")}">{_esc(p["source"])}</span>
+  </div>
+  <span class="block text-[13px] leading-snug line-clamp-2">{_esc(p["title"])}</span>
+</a>"""
+        for p in best_posts[:6]
+    )
+    best_section = (
+        f'<section class="mb-1" aria-label="베스트 오브 베스트">'
+        f'<h2 class="text-sm font-bold mb-2.5">오늘의 베스트</h2>'
+        f'<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">{best_cards}</div></section>'
+        if best_posts
+        else ""
+    )
+
     main_html = f"""<div class="grid grid-cols-1 lg:grid-cols-[7fr_3fr] gap-7 py-6">
-  <section class="grid grid-cols-1 lg:grid-cols-2 gap-4 content-start" aria-label="커뮤니티 인기글">{"".join(cards)}</section>
+  <div class="flex flex-col gap-5">
+    {best_section}
+    <section class="grid grid-cols-1 lg:grid-cols-2 gap-4 content-start" aria-label="커뮤니티 인기글">{"".join(cards)}</section>
+  </div>
   {sidebar}
 </div>"""
 
