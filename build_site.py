@@ -936,6 +936,7 @@ def _page(
             ("blindspot", "블라인드스팟", "blindspot.html"),
             ("frame", "프레임", "frame.html"),
             ("community", "커뮤니티", "community.html"),
+            ("search", "검색", "search.html"),
             ("scrapbook", "스크랩북", "scrapbook.html"),
         )
     )
@@ -1510,6 +1511,138 @@ def build_frame_page(
     (out_dir / "frame.html").write_text(page, encoding="utf-8")
 
 
+# ── 검색: 아카이브 전체 이슈 인덱스 + 클라이언트 검색 페이지 ────────────
+
+SEARCH_SCRIPT = """
+(function () {
+  var box = document.getElementById("search-results");
+  var input = document.getElementById("search-q");
+  var dateSel = document.getElementById("search-date");
+  var stat = document.getElementById("search-stat");
+  var items = [];
+
+  function el(tag, cls, text) {
+    var n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text) n.textContent = text;
+    return n;
+  }
+
+  function render() {
+    var q = (input.value || "").trim().toLowerCase();
+    var d = dateSel.value;
+    var toks = q ? q.split(/\\s+/) : [];
+    var res = items.filter(function (it) {
+      if (d && it.d !== d) return false;
+      if (!toks.length) return true;
+      var hay = (it.t + " " + it.s).toLowerCase();
+      return toks.every(function (t) { return hay.indexOf(t) >= 0; });
+    }).slice(0, 100);
+    stat.textContent = (toks.length || d) ? res.length + "건" : "검색어를 입력하거나 날짜를 선택하세요 (전체 " + items.length + "건 수록)";
+    box.textContent = "";
+    res.forEach(function (it) {
+      var card = el("a", "block rounded-xl border border-stone-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 p-4 hover:border-blue-400");
+      card.href = it.u;
+      var meta = el("div", "flex items-center gap-2 text-[11px] text-neutral-400 mb-1");
+      meta.appendChild(el("span", "tabular-nums", it.d));
+      if (it.c) meta.appendChild(el("span", "rounded-full bg-stone-100 dark:bg-neutral-700 px-2 py-0.5", it.c));
+      meta.appendChild(el("span", "", it.n + "개 매체"));
+      card.appendChild(meta);
+      card.appendChild(el("div", "font-bold text-sm mb-1", it.t));
+      if (it.s) card.appendChild(el("p", "text-xs text-neutral-500 dark:text-neutral-400 line-clamp-2", it.s));
+      box.appendChild(card);
+    });
+    var qs = new URLSearchParams();
+    if (input.value.trim()) qs.set("q", input.value.trim());
+    if (d) qs.set("d", d);
+    history.replaceState(null, "", qs.toString() ? "?" + qs.toString() : "search.html");
+  }
+
+  var debounceTimer;
+  function debounced() { clearTimeout(debounceTimer); debounceTimer = setTimeout(render, 200); }
+
+  fetch("search-index.json").then(function (r) { return r.json(); }).then(function (d) {
+    items = d.items || [];
+    var dates = [];
+    items.forEach(function (it) { if (dates.indexOf(it.d) < 0) dates.push(it.d); });
+    dates.sort().reverse().forEach(function (dt) {
+      var opt = document.createElement("option");
+      opt.value = dt; opt.textContent = dt;
+      dateSel.appendChild(opt);
+    });
+    var p = new URLSearchParams(location.search);
+    if (p.get("q")) input.value = p.get("q");
+    if (p.get("d")) dateSel.value = p.get("d");
+    render();
+  }).catch(function () { stat.textContent = "검색 인덱스를 불러오지 못했습니다"; });
+
+  input.addEventListener("input", debounced);
+  dateSel.addEventListener("change", render);
+})();
+"""
+
+
+def build_search_assets(
+    snapshots: list[tuple[str, dict]], out_dir: Path, now: datetime
+) -> None:
+    """아카이브 전체 이슈를 검색 인덱스로 통합하고 검색 페이지를 렌더링한다.
+
+    같은 라벨의 이슈는 최신 스냅샷 항목이 남는다(오래된 → 최신 순으로 덮어씀).
+    결과 링크는 해당 시각 아카이브 스냅샷의 카드 앵커로 연결된다.
+    """
+    entries: dict[str, dict] = {}
+    for stamp, brief in sorted(snapshots, key=lambda s: s[0]):
+        date = stamp[:10]
+        for i, issue in enumerate(brief.get("issues", [])):
+            label = issue.get("label")
+            if not label:
+                continue
+            entries[label] = {
+                "d": date,
+                "t": label,
+                "s": (issue.get("summary") or "")[:120],
+                "c": issue.get("category", ""),
+                "n": issue.get("outlet_count", 0),
+                "u": f"archive/{stamp}/#issue-{i}",
+            }
+    index = sorted(entries.values(), key=lambda e: e["d"], reverse=True)[:2000]
+    (out_dir / "search-index.json").write_text(
+        json.dumps({"generated_at": now.isoformat(), "items": index}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+
+    main_html = """<div class="max-w-3xl mx-auto py-6 flex flex-col gap-4">
+  <div class="flex gap-2">
+    <input id="search-q" type="search" placeholder="단어로 검색 (제목·요약)" class="min-w-0 flex-1 rounded-xl border border-stone-300 dark:border-neutral-600 bg-white dark:bg-neutral-800 px-4 py-2.5 text-sm placeholder:text-neutral-400 focus:outline-none focus:border-blue-500">
+    <select id="search-date" class="shrink-0 rounded-xl border border-stone-300 dark:border-neutral-600 bg-white dark:bg-neutral-800 px-3 py-2.5 text-sm">
+      <option value="">전체 날짜</option>
+    </select>
+  </div>
+  <p id="search-stat" class="text-xs text-neutral-400"></p>
+  <div id="search-results" class="flex flex-col gap-3"></div>
+</div>"""
+
+    stamp_footer = (
+        f"ⓒ {_esc(config.SITE_TITLE)} ({_esc(config.SITE_DOMAIN)}) · "
+        f"생성 시각 {now.strftime('%Y-%m-%d %H:%M KST')}"
+    )
+    page = _page(
+        title=f"검색 — {config.SITE_TITLE}",
+        active="search",
+        generated_at=now.isoformat(),
+        feed="",
+        updated_label="아카이브 검색",
+        head_extra="",
+        tabs_html="",
+        after_header="",
+        main_html=main_html,
+        footer_notes=["검색은 시간별 아카이브에 수록된 이슈(제목·AI 요약)를 대상으로 하며, 결과는 해당 시각의 브리핑 스냅샷으로 연결됩니다."],
+        site_stamp=stamp_footer,
+        extra_script=SEARCH_SCRIPT,
+    )
+    (out_dir / "search.html").write_text(page, encoding="utf-8")
+
+
 # ── 아카이브: 시간별 스냅샷 영구 페이지 ─────────────────────────────────
 
 
@@ -1554,13 +1687,26 @@ def build_archive_pages(
         page_dir.mkdir(parents=True, exist_ok=True)
         (page_dir / "index.html").write_text(page, encoding="utf-8")
 
-    rows = "".join(
-        f'<li><a class="block px-4 py-2.5 text-sm hover:bg-stone-50 dark:hover:bg-neutral-700/40 hover:text-blue-600 dark:hover:text-blue-400 tabular-nums" href="{_esc(s)}/">{_esc(s)} 브리핑</a></li>'
-        for s, _ in snapshots
-    )
-    index_html = f"""<div class="max-w-xl mx-auto py-6">
-  <h2 class="text-sm font-bold mb-3">시간별 브리핑 아카이브</h2>
-  <ol class="rounded-xl border border-stone-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 divide-y divide-stone-200 dark:divide-neutral-700 overflow-hidden">{rows}</ol>
+    # 날짜별 그룹으로 탐색성 개선
+    by_date: dict[str, list[str]] = {}
+    for s, _ in snapshots:
+        by_date.setdefault(s[:10], []).append(s)
+    sections = []
+    for date in sorted(by_date, reverse=True):
+        chips = "".join(
+            f'<a class="rounded-lg border border-stone-200 dark:border-neutral-600 px-3 py-1.5 text-sm tabular-nums hover:border-blue-500 hover:text-blue-600 dark:hover:text-blue-400" href="{_esc(s)}/">{_esc(s[11:])}시</a>'
+            for s in sorted(by_date[date], reverse=True)
+        )
+        sections.append(
+            f'<section><h3 class="text-sm font-bold mb-2 tabular-nums">{_esc(date)}</h3>'
+            f'<div class="flex flex-wrap gap-2">{chips}</div></section>'
+        )
+    index_html = f"""<div class="max-w-2xl mx-auto py-6 flex flex-col gap-6">
+  <div class="flex items-center justify-between">
+    <h2 class="text-sm font-bold">시간별 브리핑 아카이브</h2>
+    <a href="../search.html" class="text-xs text-blue-600 dark:text-blue-400 hover:underline">단어로 검색 →</a>
+  </div>
+  {"".join(sections)}
 </div>"""
     page = _page(
         title=f"브리핑 아카이브 — {config.SITE_TITLE}",
@@ -1599,6 +1745,7 @@ def build_seo_files(
         ("blindspot.html", "0.8", "hourly"),
         ("frame.html", "0.8", "hourly"),
         ("community.html", "0.8", "hourly"),
+        ("search.html", "0.6", "daily"),
         ("scrapbook.html", "0.3", "monthly"),
         ("archive/", "0.5", "hourly"),
     ] + [(f"archive/{s}/", "0.6", "monthly") for s in (archive_stamps or [])]
@@ -1727,6 +1874,11 @@ def build_community_page(
             if hot
             else ""
         )
+        news_badge = (
+            '<span class="text-[10px] font-bold text-sky-600 dark:text-sky-400 shrink-0">📰 뉴스</span>'
+            if p.get("news")
+            else ""
+        )
         # HOT 초신성: 연한 붉은 배경 + 붉은 링으로 확실히 대비
         card_extra = (
             " bg-red-50 dark:bg-red-500/10 ring-1 ring-red-200 dark:ring-red-500/30"
@@ -1755,6 +1907,7 @@ def build_community_page(
   <div class="flex items-center gap-2 mb-1.5">
     <span class="text-[11px] rounded-full px-2 py-0.5 font-medium {badge_cls} shrink-0">{_esc(p["source"])}</span>
     {hot_badge}
+    {news_badge}
     <span class="ml-auto text-xs font-bold text-neutral-300 dark:text-neutral-600 tabular-nums">#{i + 1}</span>
     <button type="button" class="scrap-btn text-base leading-none text-neutral-300 dark:text-neutral-600 hover:text-amber-500 shrink-0" aria-label="스크랩" data-scrap="{scrap_payload}">☆</button>
   </div>
@@ -1770,7 +1923,23 @@ def build_community_page(
         for w in _trend_keywords(posts)
     ) or '<span class="text-xs text-neutral-400">키워드 집계 중</span>'
 
+    news_posts = [p for p in posts if p.get("news")][:5]
+    news_rows = "".join(
+        f'<a class="block text-[13px] py-1.5 border-t border-stone-200 dark:border-neutral-700 first:border-0 hover:text-blue-600 dark:hover:text-blue-400 truncate" '
+        f'href="{_esc(p["link"])}" target="_blank" rel="noopener nofollow">{_esc(p["title"])}</a>'
+        for p in news_posts
+    )
+    news_panel = (
+        f"""<section class="rounded-xl border border-stone-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 p-5">
+    <h2 class="text-sm font-bold mb-0.5">📰 커뮤니티가 주목한 뉴스</h2>
+    <p class="text-[11px] text-neutral-400 mb-2">해외토픽·게임·시사성 게시물</p>
+    {news_rows}
+  </section>"""
+        if news_posts
+        else ""
+    )
     sidebar = f"""<aside class="flex flex-col gap-5 self-start lg:sticky lg:top-20">
+  {news_panel}
   <section class="rounded-xl border border-stone-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 p-5">
     <h2 class="text-sm font-bold mb-2">트렌드 키워드</h2>
     <div class="flex flex-wrap gap-1.5">{trend_chips}</div>

@@ -276,6 +276,9 @@ def main() -> None:
     if snapshots:
         build_archive_pages(snapshots, ROOT / "site", datetime.now(ZoneInfo("Asia/Seoul")))
         print(f"아카이브 페이지 {len(snapshots)}개 렌더링")
+    from build_site import build_search_assets
+
+    build_search_assets(snapshots, ROOT / "site", datetime.now(ZoneInfo("Asia/Seoul")))
     build_tailwind_css(ROOT / "site")
     (ROOT / "site" / "briefing.json").write_text(
         json.dumps(briefing, ensure_ascii=False, indent=2), encoding="utf-8"
