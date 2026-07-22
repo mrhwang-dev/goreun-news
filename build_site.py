@@ -940,7 +940,7 @@ def _page(
 <body class="bg-stone-50 dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 antialiased" style='font-family:"Pretendard Variable",Pretendard,-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Noto Sans KR","Malgun Gothic",sans-serif'>
 <div id="offline-banner" hidden class="bg-amber-100 dark:bg-amber-500/15 text-amber-800 dark:text-amber-300 text-xs text-center px-4 py-2">오프라인 상태이거나 최신 뉴스를 불러오지 못했습니다. 이전 뉴스를 보여줍니다.</div>
 <header id="site-header" class="sticky top-0 z-20 border-b border-stone-200 dark:border-neutral-700 bg-stone-50/90 dark:bg-neutral-900/90 backdrop-blur">
-  <div class="max-w-6xl mx-auto px-5">
+  <div class="max-w-[1440px] mx-auto px-5">
     <div class="flex items-center gap-2.5 py-3 flex-wrap">
       <a href="index.html" class="flex items-center gap-2.5 shrink-0" aria-label="고른뉴스 홈">
         {LOGO_MARK}
@@ -965,9 +965,9 @@ def _page(
   </div>
 </header>
 {after_header}
-<main class="max-w-6xl mx-auto px-5">{main_html}</main>
+<main class="max-w-[1440px] mx-auto px-5">{main_html}</main>
 <footer class="border-t border-stone-200 dark:border-neutral-700 mt-4 py-5 pb-12 text-xs text-neutral-500 dark:text-neutral-400">
-  <div class="max-w-6xl mx-auto px-5">
+  <div class="max-w-[1440px] mx-auto px-5">
     {notes}
     <p class="flex flex-wrap gap-x-3 gap-y-1"><span>{site_stamp}</span><span id="visit-count" class="tabular-nums"></span></p>
   </div>
@@ -1003,7 +1003,7 @@ def _render_ticker(breaking: list[dict]) -> str:
         )
     items = "".join(parts)
     return f"""<div class="border-b border-stone-200 dark:border-neutral-700 bg-white dark:bg-neutral-800">
-  <div class="max-w-6xl mx-auto px-5 py-2 flex items-center gap-3">
+  <div class="max-w-[1440px] mx-auto px-5 py-2 flex items-center gap-3">
     <span class="text-red-600 dark:text-red-400 font-bold text-xs tracking-[0.12em] shrink-0">속보</span>
     <div class="relative flex-1 h-6 overflow-hidden">{items}</div>
   </div>
@@ -1289,11 +1289,11 @@ def build(
             )
         cards.append(card)
         if i == 3:  # 4번째와 5번째 카드 사이 광고
-            cards.append(f'<div class="sm:col-span-2">{ad_slot("feed-1")}</div>')
-    cards.append('<div id="feed-sentinel" class="sm:col-span-2 h-1" aria-hidden="true"></div>')
+            cards.append(f'<div class="col-span-full">{ad_slot("feed-1")}</div>')
+    cards.append('<div id="feed-sentinel" class="col-span-full h-1" aria-hidden="true"></div>')
 
     main_html = f"""<div class="grid grid-cols-1 lg:grid-cols-[7fr_3fr] gap-7 py-6">
-  <section class="grid sm:grid-cols-2 gap-4 content-start" aria-label="주요 이슈">{"".join(cards)}</section>
+  <section class="grid sm:grid-cols-2 xl:grid-cols-3 gap-4 content-start" aria-label="주요 이슈">{"".join(cards)}</section>
   {_render_sidebar(briefing.get("policy", []), briefing.get("blindspot"))}
 </div>"""
 
@@ -1660,7 +1660,7 @@ def build_community_page(
     main_html = f"""<div class="grid grid-cols-1 lg:grid-cols-[7fr_3fr] gap-7 py-6">
   <div class="flex flex-col gap-5">
     {best_section}
-    <section class="grid grid-cols-1 lg:grid-cols-2 gap-4 content-start" aria-label="커뮤니티 인기글">{"".join(cards)}</section>
+    <section class="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4 content-start" aria-label="커뮤니티 인기글">{"".join(cards)}</section>
   </div>
   {sidebar}
 </div>"""
