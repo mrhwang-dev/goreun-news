@@ -111,6 +111,7 @@ def build_briefing() -> dict:
         config.HEAT_DECAY_HOURS,
         size_exponent=config.SIZE_EXPONENT,
         pin_top=config.TOP_PIN_COUNT,
+        min_slots=config.MIN_SLOTS_PER_CATEGORY,
     )
     print("분야별 슬롯:", slots)
 

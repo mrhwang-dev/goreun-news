@@ -165,6 +165,7 @@ def allocate_slots(
     decay_hours: float,
     size_exponent: float = 2.0,
     pin_top: int = 3,
+    min_slots: int = 1,
 ) -> tuple[list[dict], dict[str, float], dict[str, int]]:
     """이슈 점수순 정렬 + 상위 고정 + 나머지는 열기 비례 분야 배분.
 
@@ -187,8 +188,17 @@ def allocate_slots(
         avail[issue["category"]] += 1
 
     cats = sorted(avail, key=lambda c: heat.get(c, 0.0), reverse=True)
-    slots = {c: 1 for c in cats[:remaining_total]}
-    remaining = remaining_total - len(slots)
+    # 분야별 최소 슬롯 보장 (후보 수·총 슬롯 한도 내에서)
+    slots: dict[str, int] = {}
+    budget = remaining_total
+    for c in cats:
+        if budget <= 0:
+            break
+        take = min(min_slots, avail[c], budget)
+        if take > 0:
+            slots[c] = take
+            budget -= take
+    remaining = budget
 
     # 동트 방식: heat/(현재 슬롯+1)이 가장 큰 분야에 다음 슬롯
     while remaining > 0:

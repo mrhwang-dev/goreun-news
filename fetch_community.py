@@ -113,19 +113,42 @@ SOURCES = [
 ]
 
 
-def _load_seen() -> dict[str, float]:
+THUMB_FETCH_BUDGET = 20  # 실행당 og:image 조회 상한 (신규 글만, 캐시 재사용)
+
+
+def _load_seen() -> dict[str, dict]:
     try:
-        return json.loads(SEEN_PATH.read_text(encoding="utf-8"))
+        raw = json.loads(SEEN_PATH.read_text(encoding="utf-8"))
     except (FileNotFoundError, json.JSONDecodeError):
         return {}
+    # 구버전(link → float) 레코드 마이그레이션
+    return {
+        k: (v if isinstance(v, dict) else {"t": v, "thumb": None, "checked": False})
+        for k, v in raw.items()
+    }
+
+
+def _fetch_thumb(link: str) -> str | None:
+    """게시글 페이지의 og:image URL(대표 썸네일)을 가져온다. 본문은 저장하지 않는다."""
+    try:
+        page = _get(link)
+    except Exception:
+        return None
+    m = re.search(r'property="og:image"[^>]*content="([^"]+)"', page) or re.search(
+        r'content="([^"]+)"[^>]*property="og:image"', page
+    )
+    if not m:
+        return None
+    url = html.unescape(m.group(1)).strip()
+    return url if url.startswith("http") else None
 
 
 def fetch_community() -> list[dict]:
-    """소스별 인기글을 모아 [{source, title, link, hot}] 목록으로 반환한다."""
+    """소스별 인기글 [{source, title, link, hot, thumb}] 목록을 반환한다."""
     now = time.time()
     prev_seen = _load_seen()
     first_run = not prev_seen  # 최초 실행에는 '초신성' 판정을 하지 않는다
-    seen_out = {k: v for k, v in prev_seen.items() if now - v < SEEN_TTL_SECONDS}
+    seen_out = {k: v for k, v in prev_seen.items() if now - v.get("t", 0) < SEEN_TTL_SECONDS}
 
     all_posts: list[dict] = []
     for source in SOURCES:
@@ -141,8 +164,8 @@ def fetch_community() -> list[dict]:
             if post["link"] in dedupe:
                 continue
             dedupe.add(post["link"])
-            first_ts = seen_out.setdefault(post["link"], now)
-            is_supernova = (not first_run) and (now - first_ts < NEW_POST_WINDOW_SECONDS)
+            rec = seen_out.setdefault(post["link"], {"t": now, "thumb": None, "checked": False})
+            is_supernova = (not first_run) and (now - rec["t"] < NEW_POST_WINDOW_SECONDS)
             hot = is_supernova or any(k in post["title"] for k in HOT_KEYWORDS)
             all_posts.append({"source": source["name"], "hot": hot, **post})
             count += 1
@@ -150,6 +173,17 @@ def fetch_community() -> list[dict]:
                 break
         print(f"[커뮤니티] {source['name']} 인기글 {count}건")
         time.sleep(0.3)
+
+    # 썸네일: 신규 글만 og:image 1회 조회 (핫링크 표시용 URL만 저장, 이미지 미복제)
+    budget = THUMB_FETCH_BUDGET
+    for post in all_posts:
+        rec = seen_out[post["link"]]
+        if not rec.get("checked") and budget > 0:
+            rec["thumb"] = _fetch_thumb(post["link"])
+            rec["checked"] = True
+            budget -= 1
+            time.sleep(0.2)
+        post["thumb"] = rec.get("thumb")
 
     SEEN_PATH.parent.mkdir(parents=True, exist_ok=True)
     SEEN_PATH.write_text(json.dumps(seen_out), encoding="utf-8")

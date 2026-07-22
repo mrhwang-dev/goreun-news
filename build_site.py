@@ -892,6 +892,7 @@ def _render_bias_bar(bias: dict | None) -> str:
     total = sum(bias.values())
     if total == 0:
         return ""
+    dot_colors = {"progressive": "#3b82f6", "moderate": "#9ca3af", "conservative": "#ef4444"}
     segments, labels = [], []
     for key, label in BIAS_LABELS:
         n = bias.get(key, 0)
@@ -899,10 +900,14 @@ def _render_bias_bar(bias: dict | None) -> str:
             segments.append(
                 f'<span class="{BIAS_BAR_CLASSES[key]}" style="width:{n / total * 100:.0f}%"></span>'
             )
-        labels.append(f"<span>{label} {n}</span>")
+        labels.append(
+            f'<span class="inline-flex items-center gap-1">'
+            f'<span class="w-1.5 h-1.5 rounded-full" style="background:{dot_colors[key]}"></span>'
+            f"{label} {n}</span>"
+        )
     return f"""<div class="mb-2.5" aria-label="보도 매체 성향 분포">
   <div class="flex h-1.5 rounded-full overflow-hidden bg-stone-200 dark:bg-neutral-700">{"".join(segments)}</div>
-  <div class="flex justify-between text-[10px] text-neutral-400 mt-1">{"".join(labels)}</div>
+  <div class="flex gap-3 text-[10px] text-neutral-400 mt-1.5">{"".join(labels)}</div>
 </div>"""
 
 
@@ -926,14 +931,14 @@ def _render_issue(issue: dict, index: int) -> str:
     rows = "".join(
         f'<li class="relative">'
         f'<span class="absolute -left-[21px] top-1 w-2.5 h-2.5 rounded-full bg-white dark:bg-neutral-800 border-2" style="border-color:{color}" aria-hidden="true"></span>'
+        + f'<a class="flex items-start gap-2 text-[13px] hover:text-blue-600 dark:hover:text-blue-400" '
+        f'href="{_esc(h["link"])}" target="_blank" rel="noopener nofollow">'
         + (
-            f'<time class="block text-[11px] text-neutral-400 tabular-nums leading-tight">{_esc(h["time"])}</time>'
+            f'<time class="w-9 shrink-0 pt-px text-[11px] text-neutral-400 tabular-nums">{_esc(h["time"])}</time>'
             if h.get("time")
             else ""
         )
-        + f'<a class="flex items-start gap-2 text-[13px] hover:text-blue-600 dark:hover:text-blue-400" '
-        f'href="{_esc(h["link"])}" target="_blank" rel="noopener nofollow">'
-        f'{_favicon(h["link"])}'
+        + f'{_favicon(h["link"])}'
         f'<span class="min-w-0"><b class="font-semibold text-neutral-400 text-xs mr-1.5">{_esc(h["outlet"])}</b>'
         f'{_esc(h["title"])}</span></a></li>'
         for h in heads
@@ -986,14 +991,14 @@ def _render_hero_issue(issue: dict) -> str:
     rows = "".join(
         f'<li class="relative">'
         f'<span class="absolute -left-[21px] top-1 w-2.5 h-2.5 rounded-full bg-white dark:bg-neutral-800 border-2" style="border-color:{color}" aria-hidden="true"></span>'
+        + f'<a class="flex items-start gap-2 text-[13px] hover:text-blue-600 dark:hover:text-blue-400" '
+        f'href="{_esc(h["link"])}" target="_blank" rel="noopener nofollow">'
         + (
-            f'<time class="block text-[11px] text-neutral-400 tabular-nums leading-tight">{_esc(h["time"])}</time>'
+            f'<time class="w-9 shrink-0 pt-px text-[11px] text-neutral-400 tabular-nums">{_esc(h["time"])}</time>'
             if h.get("time")
             else ""
         )
-        + f'<a class="flex items-start gap-2 text-[13px] hover:text-blue-600 dark:hover:text-blue-400" '
-        f'href="{_esc(h["link"])}" target="_blank" rel="noopener nofollow">'
-        f'{_favicon(h["link"])}'
+        + f'{_favicon(h["link"])}'
         f'<span class="min-w-0"><b class="font-semibold text-neutral-400 text-xs mr-1.5">{_esc(h["outlet"])}</b>'
         f'{_esc(h["title"])}</span></a></li>'
         for h in heads
@@ -1317,6 +1322,14 @@ def build_community_page(
             },
             ensure_ascii=False,
         ))
+        thumb_html = ""
+        if p.get("thumb"):
+            # 원본 서버 핫링크 소형 썸네일 — 로드 실패 시 자동 숨김
+            thumb_html = (
+                f'<img src="{_esc(p["thumb"])}" alt="" loading="lazy" referrerpolicy="no-referrer" '
+                'class="w-16 h-16 object-cover rounded-lg shrink-0 bg-stone-100 dark:bg-neutral-700" '
+                "onerror=\"this.style.display='none'\">"
+            )
         cards.append(f"""<article data-src="{_esc(p["source"])}" class="rounded-lg border border-stone-200 dark:border-neutral-700 p-4 transition-all duration-200 hover:-translate-y-1 hover:shadow-md{card_extra}">
   <div class="flex items-center gap-2 mb-1.5">
     <span class="text-[11px] rounded-full px-2 py-0.5 font-medium {badge_cls} shrink-0">{_esc(p["source"])}</span>
@@ -1324,7 +1337,10 @@ def build_community_page(
     <span class="ml-auto text-xs font-bold text-neutral-300 dark:text-neutral-600 tabular-nums">#{i + 1}</span>
     <button type="button" class="scrap-btn text-base leading-none text-neutral-300 dark:text-neutral-600 hover:text-amber-500 shrink-0" aria-label="스크랩" data-scrap="{scrap_payload}">☆</button>
   </div>
-  <a class="block text-sm leading-snug line-clamp-2 hover:text-blue-600 dark:hover:text-blue-400" href="{_esc(p["link"])}" target="_blank" rel="noopener nofollow">{_esc(p["title"])}</a>
+  <a class="flex items-start gap-3 hover:text-blue-600 dark:hover:text-blue-400" href="{_esc(p["link"])}" target="_blank" rel="noopener nofollow">
+    <span class="flex-1 min-w-0 text-sm leading-snug line-clamp-2">{_esc(p["title"])}</span>
+    {thumb_html}
+  </a>
 </article>""")
 
     trend_chips = "".join(
@@ -1356,16 +1372,26 @@ def build_community_page(
         if (is_first or p.get("hot")) and p["link"] not in seen_links:
             seen_links.add(p["link"])
             best_posts.append(p)
-    best_cards = "".join(
-        f"""<a href="{_esc(p["link"])}" target="_blank" rel="noopener nofollow" class="block rounded-lg border border-amber-200 dark:border-amber-500/30 bg-amber-50/70 dark:bg-amber-500/10 p-3.5 transition-all duration-200 hover:-translate-y-1 hover:shadow-md">
+    def _best_card(p: dict) -> str:
+        thumb_html = ""
+        if p.get("thumb"):
+            thumb_html = (
+                f'<img src="{_esc(p["thumb"])}" alt="" loading="lazy" referrerpolicy="no-referrer" '
+                'class="w-12 h-12 object-cover rounded-lg shrink-0 bg-stone-100 dark:bg-neutral-700" '
+                "onerror=\"this.style.display='none'\">"
+            )
+        return f"""<a href="{_esc(p["link"])}" target="_blank" rel="noopener nofollow" class="block rounded-lg border border-amber-200 dark:border-amber-500/30 bg-amber-50/70 dark:bg-amber-500/10 p-3.5 transition-all duration-200 hover:-translate-y-1 hover:shadow-md">
   <div class="flex items-center gap-1.5 mb-1">
     <span class="text-[10px] font-bold text-amber-600 dark:text-amber-400">👑 BEST</span>
     <span class="text-[10px] rounded-full px-1.5 py-0.5 {SOURCE_BADGE.get(p["source"], "bg-stone-500 text-white")}">{_esc(p["source"])}</span>
   </div>
-  <span class="block text-[13px] leading-snug line-clamp-2">{_esc(p["title"])}</span>
+  <span class="flex items-start gap-2.5">
+    <span class="flex-1 min-w-0 text-[13px] leading-snug line-clamp-2">{_esc(p["title"])}</span>
+    {thumb_html}
+  </span>
 </a>"""
-        for p in best_posts[:6]
-    )
+
+    best_cards = "".join(_best_card(p) for p in best_posts[:6])
     best_section = (
         f'<section class="mb-1" aria-label="베스트 오브 베스트">'
         f'<h2 class="text-sm font-bold mb-2.5">오늘의 베스트</h2>'
