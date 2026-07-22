@@ -17,6 +17,7 @@ import config
 from quality import is_promotional
 
 UA = "Mozilla/5.0 (compatible; GoreunNews/1.0; +https://goreunnews.cloud)"
+KST = timezone(timedelta(hours=9))
 
 
 def _fetch_xml(url: str) -> str:
@@ -43,28 +44,64 @@ def _fetch_xml(url: str) -> str:
         return re.sub(r'[\x00-\x08\x0B\x0C\x0E-\x1F]', '', text)
 
 
-KST = timezone(timedelta(hours=9))
+def _extract_date_str(item: ET.Element) -> str | None:
+    """RSS item / Atom entry 요소 안에서 다양한 태그(pubDate, dc:date, published, updated)를 탐색한다."""
+    for elem in item:
+        tag_name = elem.tag.split("}")[-1].lower() if "}" in elem.tag else elem.tag.lower()
+        if tag_name in ("pubdate", "date", "published", "updated"):
+            if elem.text and elem.text.strip():
+                return elem.text.strip()
+    return None
 
 
 def _parse_ts(text: str | None) -> datetime | None:
-    """pubDate 파싱. 타임존이 없는 시각은 KST로 가정한다."""
+    """pubDate / dc:date / Atom published 날짜 파싱.
+    타임존이 없는 시각은 KST(UTC+9)로 설정한다.
+    """
     if not text:
         return None
     cleaned = text.strip()
+    # RFC822 쉼표 띄어쓰기 보정 ("Wed,22" -> "Wed, 22")
+    cleaned = re.sub(r"^([A-Za-z]{3}),(\d)", r"\1, \2", cleaned)
+    # 한국어 요일 표기 제거 ("2026-07-22 (수) 16:54:12" -> "2026-07-22 16:54:12")
+    cleaned = re.sub(r"\s*\([월화수목금토일]\)", "", cleaned)
+
+    # 1. RFC 822 / 2822 파싱
     try:
         dt = parsedate_to_datetime(cleaned)
+        if dt:
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=KST)
+            return dt
+    except (ValueError, TypeError, OverflowError):
+        pass
+
+    # 2. ISO 8601 / fromisoformat 파싱
+    try:
+        iso_str = cleaned.replace("Z", "+00:00")
+        dt = datetime.fromisoformat(iso_str)
         if dt.tzinfo is None:
             dt = dt.replace(tzinfo=KST)
         return dt
     except (ValueError, TypeError):
         pass
-    try:
-        dt = datetime.fromisoformat(cleaned.replace("Z", "+00:00"))
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=KST)
-        return dt
-    except (ValueError, TypeError):
-        return None
+
+    # 3. strptime 파싱 (국내 언론사의 다양한 날짜 구분 기호)
+    norm = cleaned.replace(".", "-").replace("/", "-")
+    formats = [
+        "%Y-%m-%d %H:%M:%S",
+        "%Y-%m-%d %H:%M",
+        "%Y-%m-%dT%H:%M:%S",
+        "%Y-%m-%d",
+    ]
+    for fmt in formats:
+        try:
+            dt = datetime.strptime(norm, fmt)
+            return dt.replace(tzinfo=KST)
+        except (ValueError, TypeError):
+            continue
+
+    return None
 
 
 def _fetch_feed_items(feed: dict, cutoff: datetime) -> tuple[list[dict], int]:
@@ -79,15 +116,23 @@ def _fetch_feed_items(feed: dict, cutoff: datetime) -> tuple[list[dict], int]:
         return [], 0
 
     feed_count = 0
-    for item in root.iter("item"):
+    # RSS <item> 과 Atom <entry> 모두 호환 탐색
+    raw_items = list(root.iter("item")) or list(root.iter("entry")) or list(root.iter("{http://www.w3.org/2005/Atom}entry"))
+    for item in raw_items:
         title = html.unescape((item.findtext("title") or "").strip())
         link = (item.findtext("link") or "").strip()
+        if not link:
+            # Atom link 요소 처리 (<link href="..."/>)
+            link_elem = item.find("link") or item.find("{http://www.w3.org/2005/Atom}link")
+            if link_elem is not None:
+                link = link_elem.attrib.get("href", "").strip()
         if not title or not link:
             continue
         if is_promotional(title):
             promo_dropped += 1
             continue
-        ts = _parse_ts(item.findtext("pubDate")) or datetime.now(timezone.utc)
+        raw_date = _extract_date_str(item)
+        ts = _parse_ts(raw_date) or datetime.now(timezone.utc)
         if ts < cutoff:
             continue
         items.append({"title": title, "link": link, "outlet": feed["outlet"], "ts": ts})
@@ -104,7 +149,6 @@ def fetch_headlines() -> list[dict]:
     seen: set[str] = set()
     total_promo_dropped = 0
 
-    # ThreadPoolExecutor로 60+ 피드를 병렬(max_workers=12) 수집하여 딜레이 90% 감소
     with ThreadPoolExecutor(max_workers=12) as executor:
         futures = [
             executor.submit(_fetch_feed_items, feed, cutoff)

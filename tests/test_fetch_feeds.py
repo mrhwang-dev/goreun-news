@@ -20,6 +20,21 @@ class TestFetchFeeds(unittest.TestCase):
         self.assertIsNotNone(dt2)
         self.assertEqual(dt2.year, 2026)
 
+        # Dot-separated Korean date formats
+        dt3 = fetch_feeds._parse_ts("2026.07.22 22:00:22")
+        self.assertIsNotNone(dt3)
+        self.assertEqual(dt3.hour, 22)
+
+        # Missing comma space RFC822 format
+        dt4 = fetch_feeds._parse_ts("Wed,22 Jul 2026 23:54:09 +0900")
+        self.assertIsNotNone(dt4)
+        self.assertEqual(dt4.minute, 54)
+
+        # Date with Korean day name bracket
+        dt5 = fetch_feeds._parse_ts("2026-07-22 (수) 16:54:12")
+        self.assertIsNotNone(dt5)
+        self.assertEqual(dt5.second, 12)
+
         # Invalid format
         self.assertIsNone(fetch_feeds._parse_ts("invalid date"))
 

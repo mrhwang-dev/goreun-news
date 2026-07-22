@@ -31,7 +31,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install -r requirements.txt
+      - run: pip install -r requirements.txt pytest
       - name: Install Korean font (OG 카드 렌더링용)
         run: sudo apt-get install -y --no-install-recommends fonts-nanum
       # AI 요약 캐시 — 변화 없는 클러스터는 재호출하지 않아 시간당 비용 최소화
@@ -43,13 +43,8 @@ jobs:
             data/bias_model_state.json
           key: briefing-cache-${{ github.run_id }}
           restore-keys: briefing-cache-
-      - name: Unit tests (cluster·framing)
-        run: |
-          python tests/test_cluster.py
-          python tests/test_framing.py
-          python tests/test_bias_model.py
-          python tests/test_categorize.py
-          python tests/test_quality.py
+      - name: Unit tests
+        run: python -m pytest tests/ -v
       - name: Generate briefing
         run: python run.py
         env:
@@ -67,8 +62,11 @@ jobs:
             git config user.email "actions@github.com"
             git add archive
             git commit -m "archive: $(date -u +%Y-%m-%dT%H:%M)Z snapshot"
-            git pull --rebase origin main || true
-            git push origin main || echo "아카이브 푸시 실패 (다음 실행에서 재시도)"
+            git pull --rebase origin main
+            if ! git push origin main; then
+              git pull --rebase origin main
+              git push origin main || echo "아카이브 푸시 실패 (다음 실행에서 재시도)"
+            fi
           fi
       - uses: actions/upload-pages-artifact@v3
         with:
