@@ -4,11 +4,12 @@
   "private": true,
   "description": "고른뉴스 모바일 앱 — Python 정적 사이트(site/)를 Capacitor로 감싼 iOS/Android 네이티브 앱",
   "scripts": {
-    "app:web": "python3 run.py --mock",
-    "app:build": "npx cap sync",
+    "app:runtime": "esbuild mobile/capacitor-runtime.js --bundle --format=iife --minify --outfile=site/capacitor.js",
+    "app:web": "python3 run.py --mock --app && npm run app:runtime",
+    "app:build": "npm run app:web && npx cap sync",
     "app:sync": "npx cap sync",
-    "app:ios": "npx cap sync ios && npx cap open ios",
-    "app:android": "npx cap sync android && npx cap open android",
+    "app:ios": "npm run app:build && npx cap open ios",
+    "app:android": "npm run app:build && npx cap open android",
     "app:assets": "npx @capacitor/assets generate --assetPath assets/app --iconBackgroundColor '#2563eb' --iconBackgroundColorDark '#1e293b' --splashBackgroundColor '#faf9f7' --splashBackgroundColorDark '#0a0a0a'"
   },
   "dependencies": {
@@ -25,6 +26,7 @@
   },
   "devDependencies": {
     "@capacitor/assets": "^3.0.5",
-    "@capacitor/cli": "^8.4.2"
+    "@capacitor/cli": "^8.4.2",
+    "esbuild": "^0.28.1"
   }
 }

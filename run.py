@@ -266,7 +266,14 @@ def build_briefing(bias_model: dict | None = None) -> dict:
 def main() -> None:
     parser = argparse.ArgumentParser(description="고른뉴스 생성")
     parser.add_argument("--mock", action="store_true", help="예시 데이터로 사이트만 생성")
+    parser.add_argument(
+        "--app",
+        action="store_true",
+        help="모바일 앱(Capacitor) 빌드: 각 페이지에 capacitor.js·native.js 주입 "
+        "(별도로 `npm run app:runtime`으로 capacitor.js 생성 필요)",
+    )
     args = parser.parse_args()
+    build_site.set_app_build(args.app)
 
     snapshots: list[tuple[str, dict]] = []
     if args.mock:
@@ -336,7 +343,7 @@ def main() -> None:
         if p.get("board_news"):
             game_issues.append({
                 "label": p["title"],
-                "summary": "게임 전문 커뮤니티에서 실시간으로 주목받고 있는 주요 소식입니다.",
+                "summary": "게임 커뮤니티 뉴스 게시판에서 수집한 소식입니다. 자세한 내용은 원문에서 확인하세요.",
                 "category": "게임",
                 "outlet_count": 1,
                 "bias": {"moderate": 1},
