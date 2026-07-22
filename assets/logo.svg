@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 64" role="img" aria-label="고른뉴스 로고">
+  <rect width="64" height="64" rx="14" fill="#2563eb"/>
+  <rect x="14" y="17" width="36" height="7" rx="3.5" fill="#ffffff"/>
+  <rect x="14" y="28.5" width="36" height="7" rx="3.5" fill="#ffffff" opacity="0.88"/>
+  <rect x="14" y="40" width="36" height="7" rx="3.5" fill="#ffffff" opacity="0.76"/>
+  <text x="82" y="45" font-family="Pretendard, 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif"
+        font-size="34" font-weight="800" letter-spacing="-0.5" fill="currentColor">고른뉴스</text>
+</svg>

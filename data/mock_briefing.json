@@ -1,11 +1,38 @@
 {
   "generated_at": "2026-07-22T09:00:00+09:00",
-  "heat": {"경제": 7.4, "정치": 5.1, "사회": 3.2, "IT·과학": 2.9, "국제": 1.4},
-  "slots": {"경제": 4, "정치": 3, "사회": 2, "IT·과학": 2, "국제": 1},
+  "heat": {
+    "경제": 7.4,
+    "정치": 5.1,
+    "사회": 3.2,
+    "IT·과학": 2.9,
+    "국제": 1.4
+  },
+  "slots": {
+    "경제": 4,
+    "정치": 3,
+    "사회": 2,
+    "IT·과학": 2,
+    "국제": 1
+  },
   "breaking": [
-    {"time": "08:41", "outlet": "조선일보", "title": "[속보] 한은, 기준금리 동결 결정 (예시)", "link": "#"},
-    {"time": "08:12", "outlet": "경향신문", "title": "[속보] 수도권 호우주의보 발효 (예시)", "link": "#"},
-    {"time": "07:55", "outlet": "한국경제", "title": "[1보] 코스피 장 초반 상승 출발 (예시)", "link": "#"}
+    {
+      "time": "08:41",
+      "outlet": "조선일보",
+      "title": "[속보] 한은, 기준금리 동결 결정 (예시)",
+      "link": "https://www.chosun.com/"
+    },
+    {
+      "time": "08:12",
+      "outlet": "경향신문",
+      "title": "[속보] 수도권 호우주의보 발효 (예시)",
+      "link": "https://www.khan.co.kr/"
+    },
+    {
+      "time": "07:55",
+      "outlet": "한국경제",
+      "title": "[1보] 코스피 장 초반 상승 출발 (예시)",
+      "link": "https://www.hankyung.com/"
+    }
   ],
   "issues": [
     {
@@ -15,10 +42,26 @@
       "outlet_count": 4,
       "latest_ts": "2026-07-22T08:45:00+09:00",
       "headlines": [
-        {"outlet": "조선일보", "title": "한은, 기준금리 동결…\"가계부채 부담\" (예시)", "link": "#"},
-        {"outlet": "경향신문", "title": "기준금리 또 동결, 서민 이자 부담은 (예시)", "link": "#"},
-        {"outlet": "한국경제", "title": "금통위 만장일치 동결…다음 달 인하 시사 (예시)", "link": "#"},
-        {"outlet": "동아일보", "title": "기준금리 동결 배경과 전망 (예시)", "link": "#"}
+        {
+          "outlet": "조선일보",
+          "title": "한은, 기준금리 동결…\"가계부채 부담\" (예시)",
+          "link": "https://www.chosun.com/"
+        },
+        {
+          "outlet": "경향신문",
+          "title": "기준금리 또 동결, 서민 이자 부담은 (예시)",
+          "link": "https://www.khan.co.kr/"
+        },
+        {
+          "outlet": "한국경제",
+          "title": "금통위 만장일치 동결…다음 달 인하 시사 (예시)",
+          "link": "https://www.hankyung.com/"
+        },
+        {
+          "outlet": "동아일보",
+          "title": "기준금리 동결 배경과 전망 (예시)",
+          "link": "https://www.donga.com/"
+        }
       ]
     },
     {
@@ -28,9 +71,21 @@
       "outlet_count": 3,
       "latest_ts": "2026-07-22T08:30:00+09:00",
       "headlines": [
-        {"outlet": "한국경제", "title": "반도체 수출 또 신기록…AI 메모리 덕 (예시)", "link": "#"},
-        {"outlet": "동아일보", "title": "수출 효자 반도체, 증가세 이어가 (예시)", "link": "#"},
-        {"outlet": "세계일보", "title": "반도체 훈풍에 수출 호조 (예시)", "link": "#"}
+        {
+          "outlet": "한국경제",
+          "title": "반도체 수출 또 신기록…AI 메모리 덕 (예시)",
+          "link": "https://www.hankyung.com/"
+        },
+        {
+          "outlet": "동아일보",
+          "title": "수출 효자 반도체, 증가세 이어가 (예시)",
+          "link": "https://www.donga.com/"
+        },
+        {
+          "outlet": "세계일보",
+          "title": "반도체 훈풍에 수출 호조 (예시)",
+          "link": "https://www.segye.com/"
+        }
       ]
     },
     {
@@ -40,9 +95,21 @@
       "outlet_count": 3,
       "latest_ts": "2026-07-22T08:20:00+09:00",
       "headlines": [
-        {"outlet": "조선일보", "title": "여야, 반도체특별법 본회의 처리 합의 (예시)", "link": "#"},
-        {"outlet": "경향신문", "title": "반도체법 세액공제 놓고 막판 진통 (예시)", "link": "#"},
-        {"outlet": "세계일보", "title": "반도체법 이번 주 처리…쟁점은 (예시)", "link": "#"}
+        {
+          "outlet": "조선일보",
+          "title": "여야, 반도체특별법 본회의 처리 합의 (예시)",
+          "link": "https://www.chosun.com/"
+        },
+        {
+          "outlet": "경향신문",
+          "title": "반도체법 세액공제 놓고 막판 진통 (예시)",
+          "link": "https://www.khan.co.kr/"
+        },
+        {
+          "outlet": "세계일보",
+          "title": "반도체법 이번 주 처리…쟁점은 (예시)",
+          "link": "https://www.segye.com/"
+        }
       ]
     },
     {
@@ -52,8 +119,16 @@
       "outlet_count": 2,
       "latest_ts": "2026-07-22T07:50:00+09:00",
       "headlines": [
-        {"outlet": "동아일보", "title": "지방 의료인력 지원 대책 발표 (예시)", "link": "#"},
-        {"outlet": "세계일보", "title": "지역 의료 공백 메운다…정부 대책 (예시)", "link": "#"}
+        {
+          "outlet": "동아일보",
+          "title": "지방 의료인력 지원 대책 발표 (예시)",
+          "link": "https://www.donga.com/"
+        },
+        {
+          "outlet": "세계일보",
+          "title": "지역 의료 공백 메운다…정부 대책 (예시)",
+          "link": "https://www.segye.com/"
+        }
       ]
     },
     {
@@ -63,9 +138,21 @@
       "outlet_count": 3,
       "latest_ts": "2026-07-22T08:35:00+09:00",
       "headlines": [
-        {"outlet": "경향신문", "title": "출근길 수도권 폭우…교통 혼잡 (예시)", "link": "#"},
-        {"outlet": "조선일보", "title": "수도권 호우…오후 소강 전망 (예시)", "link": "#"},
-        {"outlet": "세계일보", "title": "장마 다시 시작, 이번 주 내내 비 (예시)", "link": "#"}
+        {
+          "outlet": "경향신문",
+          "title": "출근길 수도권 폭우…교통 혼잡 (예시)",
+          "link": "https://www.khan.co.kr/"
+        },
+        {
+          "outlet": "조선일보",
+          "title": "수도권 호우…오후 소강 전망 (예시)",
+          "link": "https://www.chosun.com/"
+        },
+        {
+          "outlet": "세계일보",
+          "title": "장마 다시 시작, 이번 주 내내 비 (예시)",
+          "link": "https://www.segye.com/"
+        }
       ]
     },
     {
@@ -75,8 +162,16 @@
       "outlet_count": 2,
       "latest_ts": "2026-07-22T07:10:00+09:00",
       "headlines": [
-        {"outlet": "한국경제", "title": "차세대 배터리 소재 연구 성과 (예시)", "link": "#"},
-        {"outlet": "동아일보", "title": "K배터리 신소재 개발…학술지 게재 (예시)", "link": "#"}
+        {
+          "outlet": "한국경제",
+          "title": "차세대 배터리 소재 연구 성과 (예시)",
+          "link": "https://www.hankyung.com/"
+        },
+        {
+          "outlet": "동아일보",
+          "title": "K배터리 신소재 개발…학술지 게재 (예시)",
+          "link": "https://www.donga.com/"
+        }
       ]
     },
     {
@@ -86,8 +181,16 @@
       "outlet_count": 2,
       "latest_ts": "2026-07-22T06:40:00+09:00",
       "headlines": [
-        {"outlet": "조선일보", "title": "미·EU 관세 협상 테이블 다시 (예시)", "link": "#"},
-        {"outlet": "한국경제", "title": "미·EU 관세 담판…한국 수출 영향은 (예시)", "link": "#"}
+        {
+          "outlet": "조선일보",
+          "title": "미·EU 관세 협상 테이블 다시 (예시)",
+          "link": "https://www.chosun.com/"
+        },
+        {
+          "outlet": "한국경제",
+          "title": "미·EU 관세 담판…한국 수출 영향은 (예시)",
+          "link": "https://www.hankyung.com/"
+        }
       ]
     }
   ],

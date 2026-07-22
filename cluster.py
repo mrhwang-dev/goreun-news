@@ -25,6 +25,8 @@ AI는 이후 단계에서 클러스터의 라벨·요약만 담당한다.
    여러 매체가 동시에 다룬 사건일수록 중요한 이슈로 본다.
 """
 
+from __future__ import annotations
+
 import math
 import re
 from collections import defaultdict

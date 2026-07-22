@@ -5,6 +5,8 @@
   python run.py --mock   # API·네트워크 없이 예시 데이터로 사이트만 생성
 """
 
+from __future__ import annotations
+
 import argparse
 import json
 import re
@@ -123,14 +125,28 @@ def main() -> None:
         briefing = json.loads(
             (ROOT / "data" / "mock_briefing.json").read_text(encoding="utf-8")
         )
+        community = json.loads(
+            (ROOT / "data" / "mock_community.json").read_text(encoding="utf-8")
+        )
         print("예시 데이터로 사이트를 생성합니다 (API 호출 없음).")
     else:
         load_env_file()
         briefing = build_briefing()
+        from fetch_community import fetch_community
 
-    out_path = build(briefing, ROOT / "site")
+        community = fetch_community()
+
+    out_path = build(briefing, community, ROOT / "site")
     (ROOT / "site" / "briefing.json").write_text(
         json.dumps(briefing, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+    (ROOT / "site" / "community.json").write_text(
+        json.dumps(
+            {"generated_at": briefing.get("generated_at"), "posts": community},
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
     )
     print(f"생성 완료: {out_path}")
 

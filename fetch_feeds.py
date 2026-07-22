@@ -3,6 +3,8 @@
 본문·요약문(description)은 수집하지 않는다 — 저작권 안전선(SOURCES.md).
 """
 
+from __future__ import annotations
+
 import time
 import urllib.request
 import xml.etree.ElementTree as ET

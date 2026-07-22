@@ -23,6 +23,8 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install -r requirements.txt
+      - name: Install Korean font (OG 카드 렌더링용)
+        run: sudo apt-get install -y --no-install-recommends fonts-nanum
       # AI 요약 캐시 — 변화 없는 클러스터는 재호출하지 않아 시간당 비용 최소화
       - uses: actions/cache@v4
         with:
