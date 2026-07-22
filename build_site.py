@@ -2221,7 +2221,9 @@ SEARCH_SCRIPT = """
   var relBox = document.getElementById("search-rel");
   var REL_STOP = ["있다","했다","한다","위해","대한","관련","이번","오늘","기자","단독","속보","종합","논란","발표","진행","확인","이후","최근","때문","통해","그리고","하지만","전체","모든"];
   function stem(w) {
-    var sfx = ["에서","으로","이라","라고","까지","부터","에게","은","는","이","가","을","를","에","의","로","와","과","도","만","들","등"];
+    // 다음절 조사·어미만 제거 — 단음절 조사(은/는/이/가…)는 '김정은'→'김정'처럼
+    // 고유명사를 자르는 오탐이 커서 걷어내지 않는다(결정론적 보수 처리).
+    var sfx = ["에서는","으로는","에서","으로","이라","라고","까지","부터","에게","에는"];
     for (var i = 0; i < sfx.length; i++) {
       if (w.length > sfx[i].length + 1 && w.slice(-sfx[i].length) === sfx[i]) return w.slice(0, -sfx[i].length);
     }
@@ -2230,8 +2232,16 @@ SEARCH_SCRIPT = """
   function updateRelated(toks, res) {
     while (relBox.children.length > 1) relBox.removeChild(relBox.lastChild);
     if (!toks.length || res.length < 2) { relBox.classList.add("hidden"); return; }
+    // 같은 이슈가 여러 날 아카이브에 중복 수록되면 제목이 동일해 연관어가
+    // 부풀려진다 → 제목 기준 중복 제거 후 빈도를 센다.
+    var seenTitle = {};
+    var uniq = res.filter(function (it) {
+      if (seenTitle[it.t]) return false;
+      seenTitle[it.t] = 1; return true;
+    });
+    if (uniq.length < 2) { relBox.classList.add("hidden"); return; }
     var freq = {};
-    res.forEach(function (it) {
+    uniq.forEach(function (it) {
       it.t.split(/[^0-9A-Za-z\uAC00-\uD7A3]+/).forEach(function (w) {
         w = stem(w);
         if (w.length < 2 || REL_STOP.indexOf(w) >= 0) return;
