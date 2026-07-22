@@ -52,7 +52,10 @@ def fetch_policy_news(count: int | None = None) -> list[dict]:
             print(f"[경고] 정책뉴스 {news_id} 수집 실패: {e}")
             continue
 
-        title_m = re.search(r'og:title"\s+content="([^"]+)"', page)
+        title_m = (
+            re.search(r'(?:property|name)="og:title"\s+content="([^"]+)"', page)
+            or re.search(r'content="([^"]+)"\s+(?:property|name)="og:title"', page)
+        )
         title = html.unescape(title_m.group(1)) if title_m else ""
         title = re.sub(r"\s*[-|]\s*정책뉴스.*$", "", title).strip()
 
@@ -62,7 +65,10 @@ def fetch_policy_news(count: int | None = None) -> list[dict]:
         if body_m:
             body = _strip_tags(body_m.group(1))
         else:
-            desc_m = re.search(r'og:description"\s+content="([^"]*)"', page)
+            desc_m = (
+                re.search(r'(?:property|name)="og:description"\s+content="([^"]*)"', page)
+                or re.search(r'content="([^"]*)"\s+(?:property|name)="og:description"', page)
+            )
             body = html.unescape(desc_m.group(1)) if desc_m else ""
 
         if not title or len(body) < 80:

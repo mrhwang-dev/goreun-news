@@ -77,20 +77,22 @@ def claude_json(system: str, user: str, schema: dict) -> dict:
     import anthropic
 
     client = anthropic.Anthropic()
+    prompt = (
+        f"{user}\n\n다음 JSON 스키마를 정확히 따르는 JSON 객체만 출력하라:\n"
+        + json.dumps(schema, ensure_ascii=False)
+    )
 
     def call() -> dict:
         resp = client.messages.create(
             model=config.MODEL,
-            max_tokens=16000,
-            thinking={"type": "adaptive"},
+            max_tokens=8192,
             system=system,
-            output_config={"format": {"type": "json_schema", "schema": schema}},
-            messages=[{"role": "user", "content": user}],
+            messages=[{"role": "user", "content": prompt}],
         )
-        if resp.stop_reason == "refusal":
-            raise RuntimeError(f"Claude가 요청을 거부했습니다: {resp.stop_details}")
+        if getattr(resp, "stop_reason", None) == "refusal":
+            raise RuntimeError(f"Claude가 요청을 거부했습니다: {getattr(resp, 'stop_details', 'refusal')}")
         text = next(b.text for b in resp.content if b.type == "text")
-        return json.loads(text)
+        return _extract_json(text)
 
     return _with_backoff("Claude", call)
 

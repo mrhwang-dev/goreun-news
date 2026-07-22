@@ -214,9 +214,9 @@ def label_clusters(clusters: list[list[dict]]) -> dict[int, dict]:
 
     if to_ask:
         lines = []
-        for ci in to_ask:
+        for idx, ci in enumerate(to_ask):
             heads = " / ".join(f"({m['outlet']}) {m['title']}" for m in clusters[ci][:8])
-            lines.append(f"[{ci}] {heads}")
+            lines.append(f"[{idx}] {heads}")
         user = (
             "다음 헤드라인 클러스터들을 분류하라. "
             f"분야는 {', '.join(config.ISSUE_CATEGORIES)} 중 하나.\n\n" + "\n".join(lines)
@@ -227,11 +227,17 @@ def label_clusters(clusters: list[list[dict]]) -> dict[int, dict]:
         except Exception as e:
             print(f"[경고] 1차 분류 전체 실패 — 신규 클러스터 건너뜀: {e}")
             return results
-        asked = set(to_ask)
-        for entry in data.get("clusters", []):
-            ci = entry.get("id")
-            if ci not in asked:
+
+        entries = data.get("clusters", [])
+        for pos, entry in enumerate(entries):
+            sub_id = entry.get("id")
+            if isinstance(sub_id, int) and 0 <= sub_id < len(to_ask):
+                ci = to_ask[sub_id]
+            elif 0 <= pos < len(to_ask):
+                ci = to_ask[pos]
+            else:
                 continue
+
             keep = bool(entry.get("keep", True))
             meta = {
                 "keep": keep,
@@ -288,7 +294,7 @@ def refine_top_issues(issues: list[dict], top_n: int | None = None) -> None:
     from cluster import detect_honorifics, extract_frame_candidates
 
     blocks = []
-    for i in to_ask:
+    for idx, i in enumerate(to_ask):
         issue = targets[i]
         bias = issue.get("bias", {})
         bias_line = ", ".join(f"{BIAS_KO[k]} {v}곳" for k, v in bias.items() if v)
@@ -312,7 +318,7 @@ def refine_top_issues(issues: list[dict], top_n: int | None = None) -> None:
                 for h in honorifics
             ) + "\n"
         blocks.append(
-            f"[{i}] 매체 성향 분포: {bias_line or '정보 없음'}\n"
+            f"[{idx}] 매체 성향 분포: {bias_line or '정보 없음'}\n"
             f"프레임 후보(알고리즘 산출): {cand_line}\n{hono_line}{heads}"
         )
     user = (
@@ -328,10 +334,17 @@ def refine_top_issues(issues: list[dict], top_n: int | None = None) -> None:
         print(f"[경고] 정밀 요약 실패 — 1차 분류 요약 유지: {e}")
         return
 
-    asked = set(to_ask)
-    for entry in data.get("issues", []):
-        i = entry.get("id")
-        if i not in asked or not entry.get("summary"):
+    entries = data.get("issues", [])
+    for pos, entry in enumerate(entries):
+        sub_id = entry.get("id")
+        if isinstance(sub_id, int) and 0 <= sub_id < len(to_ask):
+            i = to_ask[sub_id]
+        elif 0 <= pos < len(to_ask):
+            i = to_ask[pos]
+        else:
+            continue
+
+        if not entry.get("summary"):
             continue
         targets[i]["label"] = entry.get("label") or targets[i]["label"]
         targets[i]["summary"] = entry["summary"]
@@ -376,9 +389,9 @@ def summarize_policy(articles: list[dict]) -> list[dict]:
 
     if to_ask:
         blocks = []
-        for ai in to_ask:
+        for idx, ai in enumerate(to_ask):
             art = articles[ai]
-            blocks.append(f"[{ai}] 제목: {art['title']}\n본문: {art['body'][:1500]}")
+            blocks.append(f"[{idx}] 제목: {art['title']}\n본문: {art['body'][:1500]}")
         user = "다음 정책뉴스들을 요약하라.\n\n" + "\n\n".join(blocks)
         try:
             data, engine = call_with_fallback("claude", SYSTEM_POLICY, user, POLICY_SCHEMA)
@@ -386,10 +399,17 @@ def summarize_policy(articles: list[dict]) -> list[dict]:
         except Exception as e:
             print(f"[경고] 정책 요약 실패 — 신규 기사 건너뜀: {e}")
             data = {"briefs": []}
-        asked = set(to_ask)
-        for entry in data.get("briefs", []):
-            ai = entry.get("id")
-            if ai not in asked or not entry.get("summary"):
+        entries = data.get("briefs", [])
+        for pos, entry in enumerate(entries):
+            sub_id = entry.get("id")
+            if isinstance(sub_id, int) and 0 <= sub_id < len(to_ask):
+                ai = to_ask[sub_id]
+            elif 0 <= pos < len(to_ask):
+                ai = to_ask[pos]
+            else:
+                continue
+
+            if not entry.get("summary"):
                 continue
             results[ai] = entry["summary"]
             cache["policy"][articles[ai]["id"]] = {

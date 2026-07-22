@@ -14,15 +14,20 @@ PRESS_FEEDS = [
     {"outlet": "경향신문", "url": "https://www.khan.co.kr/rss/rssdata/total_news.xml"},
     {"outlet": "동아일보", "url": "https://rss.donga.com/total.xml"},
     {"outlet": "세계일보", "url": "https://www.segye.com/Articles/RSSList/segye_recent.xml"},
+    {"outlet": "서울신문", "url": "https://www.seoul.co.kr/xml/rss/rss_total.xml"},
     # 방송·통신
     {"outlet": "MBN", "url": "https://www.mbn.co.kr/rss/"},
     {"outlet": "연합뉴스TV", "url": "https://www.yonhapnewstv.co.kr/browse/feed/"},
     {"outlet": "노컷뉴스", "url": "https://rss.nocutnews.co.kr/nocutnews.xml"},
+    {"outlet": "JTBC", "url": "https://fs.jtbc.co.kr/RSS/newsflash.xml"},
     # 경제지
     {"outlet": "한국경제", "url": "https://www.hankyung.com/feed/all-news"},
     {"outlet": "머니투데이", "url": "https://rss.mt.co.kr/mt_news.xml"},
     {"outlet": "이데일리", "url": "https://rss.edaily.co.kr/edaily_news.xml"},
-    # IT·과학 (분야 풍성화 — 2026-07-22 검증)
+    {"outlet": "매일경제", "url": "https://www.mk.co.kr/rss/30000001/"},
+    {"outlet": "아이뉴스24", "url": "http://www.inews24.com/rss/news_all.xml"},
+    {"outlet": "매일일보", "url": "https://www.m-i.kr/rss/allArticle.xml"},
+    # IT·과학 (분야 풍성화)
     {"outlet": "전자신문", "url": "https://rss.etnews.com/Section901.xml"},
     {"outlet": "블로터", "url": "https://www.bloter.net/rss/allArticle.xml"},
     {"outlet": "디지털투데이", "url": "https://www.digitaltoday.co.kr/rss/allArticle.xml"},
@@ -30,12 +35,19 @@ PRESS_FEEDS = [
     {"outlet": "IT조선", "url": "https://it.chosun.com/rss/allArticle.xml"},
     {"outlet": "벤처스퀘어", "url": "https://www.venturesquare.net/feed"},
     {"outlet": "보안뉴스", "url": "https://www.boannews.com/media/news_rss.xml"},
-    # 인터넷·주간지
+    {"outlet": "스마트에프엔", "url": "https://www.smartfn.co.kr/rss/allArticle.xml"},
+    {"outlet": "핀포인트뉴스", "url": "https://www.pinpointnews.co.kr/rss/allArticle.xml"},
+    # 인터넷·주간지·전문지
     {"outlet": "오마이뉴스", "url": "http://rss.ohmynews.com/rss/ohmynews.xml"},
     {"outlet": "미디어오늘", "url": "http://www.mediatoday.co.kr/rss/allArticle.xml"},
     {"outlet": "시사인", "url": "https://www.sisain.co.kr/rss/allArticle.xml"},
     {"outlet": "시사저널", "url": "http://www.sisajournal.com/rss/allArticle.xml"},
-    # 인터넷 언론 (2026-07-22 검증)
+    {"outlet": "더스쿠프", "url": "https://www.thescoop.co.kr/rss/allArticle.xml"},
+    {"outlet": "환경일보", "url": "https://www.hkbs.co.kr/rss/allArticle.xml"},
+    {"outlet": "청년의사", "url": "https://www.docdocdoc.co.kr/rss/allArticle.xml"},
+    {"outlet": "스트레이트뉴스", "url": "https://www.straightnews.co.kr/rss/allArticle.xml"},
+    {"outlet": "신아일보", "url": "https://www.shinailbo.co.kr/rss/allArticle.xml"},
+    # 인터넷 언론
     {"outlet": "폴리뉴스", "url": "https://www.polinews.co.kr/rss/allArticle.xml"},
     {"outlet": "뉴스프리존", "url": "https://www.newsfreezone.co.kr/rss/allArticle.xml"},
     {"outlet": "시사위크", "url": "https://www.sisaweek.com/rss/allArticle.xml"},
@@ -54,6 +66,15 @@ PRESS_FEEDS = [
     {"outlet": "울산매일", "url": "https://www.iusm.co.kr/rss/allArticle.xml"},
     {"outlet": "충청투데이", "url": "https://www.cctoday.co.kr/rss/allArticle.xml"},
     {"outlet": "제주의소리", "url": "https://www.jejusori.net/rss/allArticle.xml"},
+    {"outlet": "중부일보", "url": "https://www.joongboo.com/rss/allArticle.xml"},
+    {"outlet": "충청일보", "url": "https://www.ccdailynews.com/rss/allArticle.xml"},
+    {"outlet": "강원도민일보", "url": "http://www.kado.net/rss/allArticle.xml"},
+    {"outlet": "경남도민일보", "url": "https://www.idomin.com/rss/allArticle.xml"},
+    {"outlet": "전북도민일보", "url": "https://www.domin.co.kr/rss/allArticle.xml"},
+    {"outlet": "남도일보", "url": "https://www.namdonews.com/rss/allArticle.xml"},
+    {"outlet": "전남일보", "url": "https://www.jnilbo.com/rss/allArticle.xml"},
+    {"outlet": "충청신문", "url": "https://www.dailycc.net/rss/allArticle.xml"},
+    {"outlet": "제주일보", "url": "https://www.jejunews.com/rss/allArticle.xml"},
 ]
 
 # 피드당 최대 수집 기사 수 (전체 볼륨 상한 관리)

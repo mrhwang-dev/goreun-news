@@ -1749,8 +1749,10 @@ def build_seo_files(
     from email.utils import format_datetime
 
     base = f"https://{domain}"
-    lastmod = now.strftime("%Y-%m-%dT%H:%M:%S%z")
-    lastmod = lastmod[:-2] + ":" + lastmod[-2:]  # +0900 → +09:00
+    if now.tzinfo is None:
+        from datetime import timezone as _tz
+        now = now.replace(tzinfo=_tz.utc)
+    lastmod = now.isoformat()
 
     pages = [
         ("", "1.0", "hourly"),

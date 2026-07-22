@@ -14,20 +14,46 @@ from email.utils import parsedate_to_datetime
 
 import config
 
+import re
+
 UA = "Mozilla/5.0 (compatible; GoreunNews/1.0; +https://goreun.news)"
 
 
-def _fetch(url: str) -> bytes:
+def _fetch_xml(url: str) -> str:
     req = urllib.request.Request(url, headers={"User-Agent": UA})
     with urllib.request.urlopen(req, timeout=15) as resp:
-        return resp.read()
+        raw = resp.read()
+        encoding = "utf-8"
+        content_type = resp.headers.get("Content-Type", "")
+        if "charset=" in content_type.lower():
+            encoding = content_type.lower().split("charset=")[-1].split(";")[0].strip()
+        elif b"encoding=" in raw[:100].lower():
+            m = re.search(rb'encoding=["\']([^"\']+)["\']', raw[:100], re.IGNORECASE)
+            if m:
+                encoding = m.group(1).decode("ascii", errors="ignore")
+
+        try:
+            text = raw.decode(encoding, errors="replace")
+        except (LookupError, UnicodeDecodeError):
+            text = raw.decode("utf-8", errors="replace")
+
+        # Expat 파서가 XML 선언문 내 euc-kr/cp949 표기에 반응하여 오류를 일으키는 현상 방지
+        return re.sub(r'encoding=["\'][^"\']+["\']', 'encoding="utf-8"', text, count=1, flags=re.I)
 
 
 def _parse_ts(text: str | None) -> datetime | None:
     if not text:
         return None
+    cleaned = text.strip()
     try:
-        dt = parsedate_to_datetime(text.strip())
+        dt = parsedate_to_datetime(cleaned)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt
+    except (ValueError, TypeError):
+        pass
+    try:
+        dt = datetime.fromisoformat(cleaned.replace("Z", "+00:00"))
         if dt.tzinfo is None:
             dt = dt.replace(tzinfo=timezone.utc)
         return dt
@@ -43,7 +69,7 @@ def fetch_headlines() -> list[dict]:
 
     for feed in config.PRESS_FEEDS:
         try:
-            root = ET.fromstring(_fetch(feed["url"]))
+            root = ET.fromstring(_fetch_xml(feed["url"]))
         except Exception as e:  # 개별 피드 장애가 전체를 막지 않도록
             print(f"[경고] {feed['outlet']} 피드 수집 실패: {e}")
             continue
