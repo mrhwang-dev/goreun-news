@@ -1989,6 +1989,73 @@ SEARCH_SCRIPT = """
     if (input.value.trim()) qs.set("q", input.value.trim());
     if (d) qs.set("d", d);
     history.replaceState(null, "", qs.toString() ? "?" + qs.toString() : "search.html");
+    updateTrend(toks, d);
+    updateRelated(toks, res);
+  }
+
+  /* 날짜별 보도 추이 — 검색어 매칭 건수를 날짜별로 집계한 미니 막대 차트 */
+  var trendBox = document.getElementById("search-trend");
+  var trendBars = document.getElementById("trend-bars");
+  function updateTrend(toks, activeDate) {
+    if (!toks.length) { trendBox.classList.add("hidden"); return; }
+    var byDate = {};
+    items.forEach(function (it) {
+      var hay = (it.t + " " + it.s).toLowerCase();
+      if (toks.every(function (t) { return hay.indexOf(t) >= 0; })) byDate[it.d] = (byDate[it.d] || 0) + 1;
+    });
+    var dates = Object.keys(byDate).sort();
+    if (dates.length < 2) { trendBox.classList.add("hidden"); return; }
+    trendBox.classList.remove("hidden");
+    var max = 0;
+    dates.forEach(function (dt) { if (byDate[dt] > max) max = byDate[dt]; });
+    trendBars.textContent = "";
+    dates.forEach(function (dt) {
+      var col = el("button", "flex-1 min-w-0 flex flex-col items-center gap-0.5 group");
+      col.type = "button";
+      col.title = dt + " · " + byDate[dt] + "건";
+      var bar = el("div", "w-full max-w-[26px] rounded-t " + (dt === activeDate ? "bg-blue-600" : "bg-blue-300 dark:bg-blue-800 group-hover:bg-blue-500"));
+      bar.style.height = Math.max(4, Math.round(byDate[dt] / max * 48)) + "px";
+      col.appendChild(bar);
+      col.appendChild(el("span", "text-[9px] text-neutral-400 tabular-nums", dt.slice(5)));
+      col.addEventListener("click", function () { dateSel.value = (dateSel.value === dt ? "" : dt); render(); });
+      trendBars.appendChild(col);
+    });
+  }
+
+  /* 연관어 — 매칭 결과 제목에서 조사 어미를 걷어낸 뒤 빈도순 상위 8개 */
+  var relBox = document.getElementById("search-rel");
+  var REL_STOP = ["있다","했다","한다","위해","대한","관련","이번","오늘","기자","단독","속보","종합","논란","발표","진행","확인","이후","최근","때문","통해","그리고","하지만","전체","모든"];
+  function stem(w) {
+    var sfx = ["에서","으로","이라","라고","까지","부터","에게","은","는","이","가","을","를","에","의","로","와","과","도","만","들","등"];
+    for (var i = 0; i < sfx.length; i++) {
+      if (w.length > sfx[i].length + 1 && w.slice(-sfx[i].length) === sfx[i]) return w.slice(0, -sfx[i].length);
+    }
+    return w;
+  }
+  function updateRelated(toks, res) {
+    while (relBox.children.length > 1) relBox.removeChild(relBox.lastChild);
+    if (!toks.length || res.length < 2) { relBox.classList.add("hidden"); return; }
+    var freq = {};
+    res.forEach(function (it) {
+      it.t.split(/[^0-9A-Za-z\uAC00-\uD7A3]+/).forEach(function (w) {
+        w = stem(w);
+        if (w.length < 2 || REL_STOP.indexOf(w) >= 0) return;
+        var lw = w.toLowerCase();
+        if (toks.some(function (t) { return lw.indexOf(t) >= 0 || t.indexOf(lw) >= 0; })) return;
+        freq[w] = (freq[w] || 0) + 1;
+      });
+    });
+    var top = Object.keys(freq).filter(function (w) { return freq[w] >= 2; })
+      .sort(function (a, b) { return freq[b] - freq[a]; }).slice(0, 8);
+    if (!top.length) { relBox.classList.add("hidden"); return; }
+    relBox.classList.remove("hidden");
+    relBox.classList.add("flex");
+    top.forEach(function (w) {
+      var chip = el("button", "rounded-full border border-stone-300 dark:border-neutral-600 px-2.5 py-1 hover:border-blue-500 hover:text-blue-600 dark:hover:text-blue-400", w + " " + freq[w]);
+      chip.type = "button";
+      chip.addEventListener("click", function () { input.value = input.value.trim() + " " + w; render(); });
+      relBox.appendChild(chip);
+    });
   }
 
   var debounceTimer;
@@ -2053,6 +2120,13 @@ def build_search_assets(
     </select>
   </div>
   <p id="search-stat" class="text-xs text-neutral-400"></p>
+  <div id="search-trend" class="hidden rounded-xl border border-stone-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 p-4">
+    <p class="text-[11px] font-bold text-neutral-400 mb-2">날짜별 보도 추이 <span class="font-normal">— 막대를 누르면 해당 날짜로 필터</span></p>
+    <div id="trend-bars" class="flex items-end gap-1 h-16"></div>
+  </div>
+  <div id="search-rel" class="hidden flex-wrap items-center gap-1.5 text-xs">
+    <span class="text-neutral-400 mr-1">연관어</span>
+  </div>
   <div id="search-results" class="flex flex-col gap-3"></div>
 </div>"""
 
