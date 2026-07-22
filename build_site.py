@@ -912,6 +912,49 @@ def build_seo_files(
 
 # ── 커뮤니티 페이지 ─────────────────────────────────────────────────────
 
+# 커뮤니티 브랜드 컬러 뱃지
+SOURCE_BADGE = {
+    "루리웹": "bg-blue-600 text-white",
+    "더쿠": "bg-gray-700 text-white",
+}
+
+_TREND_STOPWORDS = {
+    "오늘", "진짜", "근데", "이거", "그냥", "사람", "요즘", "하는", "보는", "있는",
+    "없는", "이제", "다시", "때문", "정도", "레전드", "후기", "단독", "속보",
+}
+
+COMMUNITY_SIDEBAR_SCRIPT = """
+(function () {
+  var box = document.getElementById("comm-scraps");
+  if (!box) return;
+  var posts = loadScraps().filter(function (s) { return s.type === "post"; }).slice(0, 5);
+  if (!posts.length) {
+    box.innerHTML = '<p class="text-xs text-neutral-400">게시글의 ☆를 눌러 저장해 보세요.</p>';
+    return;
+  }
+  posts.forEach(function (s) {
+    var a = document.createElement("a");
+    a.className = "block text-[13px] py-1.5 border-t border-stone-200 dark:border-neutral-700 first:border-0 hover:text-blue-600 dark:hover:text-blue-400 truncate";
+    a.href = s.link; a.target = "_blank"; a.rel = "noopener nofollow";
+    a.textContent = s.title;
+    box.appendChild(a);
+  });
+})();
+"""
+
+
+def _trend_keywords(posts: list[dict], top_n: int = 8) -> list[str]:
+    """게시글 제목에서 빈출 키워드를 추출한다 (간단 토큰 빈도)."""
+    import re as _re
+    from collections import Counter
+
+    counter: Counter[str] = Counter()
+    for post in posts:
+        for token in _re.findall(r"[가-힣]{2,}", post["title"]):
+            if token not in _TREND_STOPWORDS and token not in SOURCE_BADGE:
+                counter[token] += 1
+    return [w for w, n in counter.most_common(top_n) if n >= 2]
+
 
 def build_community_page(
     posts: list[dict], out_dir: Path, generated_at: str,
@@ -925,15 +968,21 @@ def build_community_page(
         _tab(src, n, "src", src, False) for src, n in counts.items()
     ]
 
-    rows = []
+    cards = []
     for i, p in enumerate(posts):
         hot = p.get("hot")
+        badge_cls = SOURCE_BADGE.get(p["source"], "bg-stone-500 text-white")
         hot_badge = (
             '<span class="text-[10px] font-bold text-red-500 shrink-0">🔥 HOT</span>'
             if hot
             else ""
         )
-        row_bg = " bg-amber-50 dark:bg-amber-500/10" if hot else ""
+        # HOT 초신성: 연한 붉은 배경 + 붉은 링으로 확실히 대비
+        card_extra = (
+            " bg-red-50 dark:bg-red-500/10 ring-1 ring-red-200 dark:ring-red-500/30"
+            if hot
+            else " bg-white dark:bg-neutral-800"
+        )
         scrap_payload = _esc(json.dumps(
             {
                 "id": f"post:{p['link']}",
@@ -944,19 +993,37 @@ def build_community_page(
             },
             ensure_ascii=False,
         ))
-        rows.append(f"""<li data-src="{_esc(p["source"])}">
-  <div class="flex items-center gap-3 px-4 py-3 hover:bg-stone-50 dark:hover:bg-neutral-700/40{row_bg}">
-    <span class="w-6 text-right text-sm font-bold text-neutral-300 dark:text-neutral-600 tabular-nums shrink-0">{i + 1}</span>
-    <a class="flex-1 min-w-0 text-sm truncate hover:text-blue-600 dark:hover:text-blue-400" href="{_esc(p["link"])}" target="_blank" rel="noopener nofollow">{_esc(p["title"])}</a>
+        cards.append(f"""<article data-src="{_esc(p["source"])}" class="rounded-lg border border-stone-200 dark:border-neutral-700 p-4 transition-all duration-200 hover:-translate-y-1 hover:shadow-md{card_extra}">
+  <div class="flex items-center gap-2 mb-1.5">
+    <span class="text-[11px] rounded-full px-2 py-0.5 font-medium {badge_cls} shrink-0">{_esc(p["source"])}</span>
     {hot_badge}
-    <span class="text-[11px] rounded-full px-2 py-0.5 bg-stone-100 dark:bg-neutral-700 text-neutral-500 dark:text-neutral-400 shrink-0">{_esc(p["source"])}</span>
+    <span class="ml-auto text-xs font-bold text-neutral-300 dark:text-neutral-600 tabular-nums">#{i + 1}</span>
     <button type="button" class="scrap-btn text-base leading-none text-neutral-300 dark:text-neutral-600 hover:text-amber-500 shrink-0" aria-label="스크랩" data-scrap="{scrap_payload}">☆</button>
   </div>
-</li>""")
+  <a class="block text-sm leading-snug line-clamp-2 hover:text-blue-600 dark:hover:text-blue-400" href="{_esc(p["link"])}" target="_blank" rel="noopener nofollow">{_esc(p["title"])}</a>
+</article>""")
 
-    main_html = f"""<div class="max-w-3xl mx-auto py-6 flex flex-col gap-5">
-  <ol class="rounded-xl border border-stone-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 divide-y divide-stone-200 dark:divide-neutral-700 overflow-hidden">{"".join(rows)}</ol>
+    trend_chips = "".join(
+        f'<span class="text-xs rounded-full border border-stone-200 dark:border-neutral-600 px-2.5 py-1 text-neutral-600 dark:text-neutral-300">#{_esc(w)}</span>'
+        for w in _trend_keywords(posts)
+    ) or '<span class="text-xs text-neutral-400">키워드 집계 중</span>'
+
+    sidebar = f"""<aside class="flex flex-col gap-5 self-start lg:sticky lg:top-20">
+  <section class="rounded-xl border border-stone-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 p-5">
+    <h2 class="text-sm font-bold mb-2">트렌드 키워드</h2>
+    <div class="flex flex-wrap gap-1.5">{trend_chips}</div>
+  </section>
+  <section class="rounded-xl border border-stone-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 p-5">
+    <h2 class="text-sm font-bold mb-2">스크랩한 커뮤니티 글</h2>
+    <div id="comm-scraps"></div>
+    <a href="scrapbook.html" class="block mt-2.5 text-xs text-blue-600 dark:text-blue-400 hover:underline">스크랩북 전체 보기 →</a>
+  </section>
   {ad_slot("community-1")}
+</aside>"""
+
+    main_html = f"""<div class="grid grid-cols-1 lg:grid-cols-[7fr_3fr] gap-7 py-6">
+  <section class="grid grid-cols-1 lg:grid-cols-2 gap-4 content-start" aria-label="커뮤니티 인기글">{"".join(cards)}</section>
+  {sidebar}
 </div>"""
 
     page = _page(
@@ -971,6 +1038,7 @@ def build_community_page(
         main_html=main_html,
         footer_notes=[COMMUNITY_NOTICE],
         site_stamp=stamp,
+        extra_script=COMMUNITY_SIDEBAR_SCRIPT,
     )
     out_path = out_dir / "community.html"
     out_path.write_text(page, encoding="utf-8")
