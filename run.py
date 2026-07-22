@@ -87,6 +87,7 @@ def build_briefing() -> dict:
                 **meta,
                 "outlet_count": len(outlets),
                 "bias": bias,
+                "_links": [m["link"] for m in cluster],
                 "latest_ts": max(m["ts"] for m in cluster),
                 "headlines": [
                     {"outlet": m["outlet"], "title": m["title"], "link": m["link"]}
@@ -107,13 +108,21 @@ def build_briefing() -> dict:
     policy = summarize_policy(articles)
     print(f"정책 브리핑 {len(policy)}건")
 
+    # 속보 → 해당 이슈 카드 매핑 (티커 클릭 시 카드로 스크롤)
+    link_to_idx = {
+        link: i for i, issue in enumerate(selected) for link in issue.get("_links", [])
+    }
+    breaking = detect_breaking(items)
+    for entry in breaking:
+        entry["issue_index"] = link_to_idx.get(entry["link"])
+
     return {
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "heat": {c: round(h, 2) for c, h in sorted(heat.items(), key=lambda x: -x[1])},
         "slots": slots,
-        "breaking": detect_breaking(items),
+        "breaking": breaking,
         "issues": [
-            {k: v for k, v in issue.items() if k != "latest_ts"}
+            {k: v for k, v in issue.items() if k not in ("latest_ts", "_links")}
             | {"latest_ts": issue["latest_ts"].isoformat()}
             for issue in selected
         ],

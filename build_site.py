@@ -56,8 +56,21 @@ details[open] .tri { transform: rotate(180deg); }
 :root[data-fs="2"] .fs-t { font-size: 17px; }
 :root[data-fs="2"] .fs-p { font-size: 15.5px; }
 #site-header { transition: transform 0.3s; }
+/* AI 요약 3줄 클램프 + 하단 페이드, 클릭 시 펼침 */
+.summary-wrap p { @apply line-clamp-3; }
+.summary-wrap.open p { -webkit-line-clamp: unset; }
+.summary-wrap .fade { @apply absolute bottom-0 inset-x-0 h-5 bg-gradient-to-t from-white dark:from-neutral-800 to-transparent pointer-events-none transition-opacity; }
+.summary-wrap.open .fade, .summary-wrap.no-clamp .fade { opacity: 0; }
+.summary-wrap.no-clamp { cursor: default; }
+/* 티커 → 카드 도착 하이라이트 (2초간 은은한 블루 링) */
+.flash-ring { animation: flashRing 1s ease-in-out 2; }
+@keyframes flashRing {
+  0%, 100% { box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.5); }
+  50% { box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.15); }
+}
 @media (prefers-reduced-motion: reduce) {
-  .ticker-item, .tri, #site-header { transition: none; }
+  .ticker-item, .tri, #site-header, .summary-wrap .fade { transition: none; }
+  .flash-ring { animation: none; box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.5); }
 }
 """
 
@@ -150,6 +163,73 @@ if (pageFeed) {
       })
       .catch(showOfflineBanner);
   }, 10 * 60 * 1000);
+}
+
+// ── AI 요약 3줄 클램프: 클릭 시 부드럽게 펼침 ──
+document.querySelectorAll(".summary-wrap").forEach(function (wrap) {
+  var p = wrap.querySelector("p");
+  if (p.scrollHeight <= p.clientHeight + 2) {
+    wrap.classList.add("no-clamp");
+    return;
+  }
+  wrap.addEventListener("click", function () {
+    if (wrap.classList.contains("open")) {
+      wrap.classList.remove("open");
+      return;
+    }
+    var start = p.clientHeight;
+    wrap.classList.add("open");
+    var end = p.scrollHeight;
+    if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      p.style.maxHeight = start + "px";
+      p.style.overflow = "hidden";
+      requestAnimationFrame(function () {
+        p.style.transition = "max-height 0.3s ease";
+        p.style.maxHeight = end + "px";
+        setTimeout(function () {
+          p.style.maxHeight = "";
+          p.style.transition = "";
+          p.style.overflow = "";
+        }, 320);
+      });
+    }
+  });
+});
+
+// ── 속보 티커 클릭 → 해당 이슈 카드로 스크롤 + 2초 링 하이라이트 ──
+document.querySelectorAll(".ticker-jump").forEach(function (a) {
+  a.addEventListener("click", function (e) {
+    e.preventDefault();
+    var card = document.getElementById(a.dataset.target);
+    if (!card) return;
+    if (card.hidden) {
+      var allTab = document.querySelector('.tab[data-value="전체"]');
+      if (allTab) allTab.click();
+    }
+    var reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    card.scrollIntoView({ behavior: reduced ? "auto" : "smooth", block: "center" });
+    card.classList.remove("flash-ring");
+    void card.offsetWidth; // 애니메이션 재시작
+    card.classList.add("flash-ring");
+    setTimeout(function () { card.classList.remove("flash-ring"); }, 2100);
+  });
+});
+
+// ── 갱신 시각 상대 표시 ("방금 전/N분 전 갱신됨") ──
+var updatedLabel = document.getElementById("updated-label");
+if (updatedLabel && pageGeneratedAt) {
+  var renderUpdated = function () {
+    var diff = (Date.now() - new Date(pageGeneratedAt).getTime()) / 1000;
+    if (isNaN(diff) || diff < 0) return;
+    var text;
+    if (diff < 60) text = "방금 전 갱신됨";
+    else if (diff < 3600) text = Math.floor(diff / 60) + "분 전 갱신됨";
+    else if (diff < 86400) text = Math.floor(diff / 3600) + "시간 전 갱신됨";
+    else text = Math.floor(diff / 86400) + "일 전 갱신됨";
+    updatedLabel.textContent = text;
+  };
+  renderUpdated();
+  setInterval(renderUpdated, 30 * 1000);
 }
 
 // ── 토스트 ──
@@ -404,9 +484,9 @@ def _esc(s: str) -> str:
 def _favicon(link: str) -> str:
     host = urllib.parse.urlparse(link).netloc
     if not host:
-        return ""
+        return '<span class="w-4 h-4 shrink-0"></span>'
     return (
-        f'<img class="inline-block rounded-[3px] -mt-0.5 mr-1.5" '
+        f'<img class="w-4 h-4 rounded-[3px] mt-0.5 shrink-0" '
         f'src="https://www.google.com/s2/favicons?domain={_esc(host)}&amp;sz=32" '
         'width="16" height="16" alt="" loading="lazy">'
     )
@@ -482,7 +562,13 @@ def _page(
       </a>
       <span class="hidden md:inline text-xs text-neutral-500 dark:text-neutral-400">{_esc(config.SITE_TAGLINE)}</span>
       <nav class="flex gap-1 ml-2" aria-label="페이지">{nav}</nav>
-      <span class="ml-auto text-xs text-neutral-500 dark:text-neutral-400 tabular-nums">{_esc(updated_label)}</span>
+      <span class="ml-auto flex items-center gap-1.5 text-xs text-neutral-500 dark:text-neutral-400">
+        <span class="relative flex h-2 w-2" aria-hidden="true">
+          <span class="animate-pulse absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+          <span class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+        </span>
+        <span id="updated-label" class="tabular-nums">{_esc(updated_label)}</span>
+      </span>
       <span class="flex gap-1">
         <button type="button" id="fs-down" title="글자 작게" class="rounded-full border border-stone-300 dark:border-neutral-600 bg-white dark:bg-neutral-800 px-2.5 py-1 text-xs text-neutral-500 dark:text-neutral-400 hover:text-blue-600 hover:border-blue-500">가</button>
         <button type="button" id="fs-up" title="글자 크게" class="rounded-full border border-stone-300 dark:border-neutral-600 bg-white dark:bg-neutral-800 px-2.5 py-1 text-sm text-neutral-500 dark:text-neutral-400 hover:text-blue-600 hover:border-blue-500">가+</button>
@@ -514,14 +600,21 @@ def _page(
 def _render_ticker(breaking: list[dict]) -> str:
     if not breaking:
         return ""
-    items = "".join(
-        f'<a class="ticker-item absolute inset-0 flex items-center gap-2 truncate text-sm" '
-        f'href="{_esc(b["link"])}" target="_blank" rel="noopener nofollow">'
-        f'<time class="text-red-600 dark:text-red-400 text-xs font-semibold tabular-nums shrink-0">{_esc(b["time"])}</time>'
-        f'<span class="truncate">{_esc(b["title"])}</span>'
-        f'<span class="text-xs text-neutral-400 shrink-0">{_esc(b["outlet"])}</span></a>'
-        for b in breaking
-    )
+    parts = []
+    for b in breaking:
+        idx = b.get("issue_index")
+        if idx is not None:
+            # 대응하는 이슈 카드가 있으면 카드로 스크롤 (JS에서 부드러운 이동 + 하이라이트)
+            attrs = f'href="#issue-{idx}" data-target="issue-{idx}" class="ticker-item ticker-jump absolute inset-0 flex items-center gap-2 truncate text-sm"'
+        else:
+            attrs = f'href="{_esc(b["link"])}" target="_blank" rel="noopener nofollow" class="ticker-item absolute inset-0 flex items-center gap-2 truncate text-sm"'
+        parts.append(
+            f"<a {attrs}>"
+            f'<time class="text-red-600 dark:text-red-400 text-xs font-semibold tabular-nums shrink-0">{_esc(b["time"])}</time>'
+            f'<span class="truncate">{_esc(b["title"])}</span>'
+            f'<span class="text-xs text-neutral-400 shrink-0">{_esc(b["outlet"])}</span></a>'
+        )
+    items = "".join(parts)
     return f"""<div class="border-b border-stone-200 dark:border-neutral-700 bg-white dark:bg-neutral-800">
   <div class="max-w-6xl mx-auto px-5 py-2 flex items-center gap-3">
     <span class="text-red-600 dark:text-red-400 font-bold text-xs tracking-[0.12em] shrink-0">속보</span>
@@ -567,10 +660,11 @@ def _render_issue(issue: dict, index: int) -> str:
         ensure_ascii=False,
     ))
     rows = "".join(
-        f'<li><a class="block text-[13px] hover:text-blue-600 dark:hover:text-blue-400" '
+        f'<li><a class="flex items-start gap-2 text-[13px] hover:text-blue-600 dark:hover:text-blue-400" '
         f'href="{_esc(h["link"])}" target="_blank" rel="noopener nofollow">'
-        f'{_favicon(h["link"])}<b class="font-semibold text-neutral-400 text-xs mr-1.5">{_esc(h["outlet"])}</b>'
-        f'{_esc(h["title"])}</a></li>'
+        f'{_favicon(h["link"])}'
+        f'<span class="min-w-0"><b class="font-semibold text-neutral-400 text-xs mr-1.5">{_esc(h["outlet"])}</b>'
+        f'{_esc(h["title"])}</span></a></li>'
         for h in heads
     )
     return f"""<article id="{anchor}" class="rounded-xl border border-stone-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 p-5 border-t-[3px]" style="border-top-color:{color}" data-cat="{_esc(issue["category"])}">
@@ -582,7 +676,10 @@ def _render_issue(issue: dict, index: int) -> str:
     </span>
   </div>
   <h3 class="fs-t mt-2.5 mb-1.5 font-bold text-[15px] leading-snug [text-wrap:balance]">{_esc(issue["label"])}</h3>
-  <p class="fs-p text-sm text-neutral-600 dark:text-neutral-300 mb-3.5">{_esc(issue["summary"])}</p>
+  <div class="summary-wrap relative cursor-pointer mb-3.5" title="클릭하면 전체 요약을 봅니다">
+    <p class="fs-p text-sm text-neutral-600 dark:text-neutral-300">{_esc(issue["summary"])}</p>
+    <span class="fade"></span>
+  </div>
   <div class="flex items-center gap-2 border-t border-stone-200 dark:border-neutral-700 pt-3">
     <details class="flex-1">
       <summary class="list-none [&::-webkit-details-marker]:hidden cursor-pointer select-none inline-flex items-center gap-1.5 rounded-lg border border-stone-200 dark:border-neutral-600 px-3 py-1.5 text-xs font-medium text-blue-600 dark:text-blue-400 hover:bg-stone-100 dark:hover:bg-neutral-700">

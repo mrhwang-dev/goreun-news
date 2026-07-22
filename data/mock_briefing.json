@@ -19,19 +19,22 @@
       "time": "08:41",
       "outlet": "조선일보",
       "title": "[속보] 한은, 기준금리 동결 결정 (예시)",
-      "link": "https://www.chosun.com/"
+      "link": "https://www.chosun.com/",
+      "issue_index": 0
     },
     {
       "time": "08:12",
       "outlet": "경향신문",
       "title": "[속보] 수도권 호우주의보 발효 (예시)",
-      "link": "https://www.khan.co.kr/"
+      "link": "https://www.khan.co.kr/",
+      "issue_index": 4
     },
     {
       "time": "07:55",
       "outlet": "한국경제",
       "title": "[1보] 코스피 장 초반 상승 출발 (예시)",
-      "link": "https://www.hankyung.com/"
+      "link": "https://www.hankyung.com/",
+      "issue_index": null
     }
   ],
   "issues": [
