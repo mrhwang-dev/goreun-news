@@ -222,3 +222,72 @@ def allocate_slots(
         slots[issue["category"]] = slots.get(issue["category"], 0) + 1
 
     return pinned + selected_rest, heat, slots
+
+
+# ── 프레임 단어 후보 산출 알고리즘 ──────────────────────────────────────
+#
+# '프레임 체크'의 뼈대. LLM이 아니라 집합 연산으로 후보를 결정한다.
+#
+# 1) 토큰화 — 제목에서 두 종류를 뽑는다:
+#    - 일반 토큰: 한글/영문/숫자 2자 이상 연속
+#    - 인용구: 따옴표(“ ” ' ' " ') 안의 구절. 편집국이 따옴표로 올린 표현은
+#      프레임이 압축된 결정체라 최우선 후보다.
+# 2) 공통어 — 서로 다른 제목 절반 이상(최소 2건)에 등장한 토큰.
+#    모든 진영이 합의한 사실의 축을 보여준다.
+# 3) 진영 전용어 — 진보 매체 제목에만 있고 보수 제목엔 없는 토큰(및 그 반대).
+#    분포가 아니라 '언어'에서 편향이 드러나는 지점. 공통어·불용어는 제외.
+# 4) LLM은 이 후보 집합 안에서만 선택·서술한다 (없는 단어를 만들 수 없음).
+
+_FRAME_STOPWORDS = {
+    "대통령", "오늘", "내일", "이번", "지난", "관련", "위해", "대한", "밝혔", "말했",
+    "때문", "가운데", "속보", "단독", "종합", "영상", "포토", "전해", "논의",
+}
+
+_QUOTE_RE = re.compile(r"[“\"'‘]([^”\"'’]{2,20})[”\"'’]")
+_TOKEN_RE = re.compile(r"[가-힣A-Za-z0-9]{2,}")
+
+
+def _frame_tokens(title: str) -> set[str]:
+    tokens = {t for t in _TOKEN_RE.findall(title) if t not in _FRAME_STOPWORDS}
+    tokens.update(q.strip() for q in _QUOTE_RE.findall(title) if len(q.strip()) >= 2)
+    return tokens
+
+
+def extract_frame_candidates(headlines: list[dict]) -> dict[str, list[str]]:
+    """헤드라인 목록에서 {common, progressive, conservative} 프레임 후보를 산출한다.
+
+    headlines 항목은 {"title", "bias"} 필요. 빈도 높은 순으로 각 3개까지.
+    """
+    from collections import Counter
+
+    all_sets = [_frame_tokens(h["title"]) for h in headlines]
+    prog_tokens: set[str] = set()
+    cons_tokens: set[str] = set()
+    for h, s in zip(headlines, all_sets):
+        if h.get("bias") == "progressive":
+            prog_tokens |= s
+        elif h.get("bias") == "conservative":
+            cons_tokens |= s
+
+    freq: Counter[str] = Counter()
+    for s in all_sets:
+        freq.update(s)
+
+    threshold = max(2, len(headlines) // 2)
+    common = [w for w, c in freq.most_common() if c >= threshold][:3]
+    common_set = set(common)
+
+    prog_text = " || ".join(h["title"] for h in headlines if h.get("bias") == "progressive")
+    cons_text = " || ".join(h["title"] for h in headlines if h.get("bias") == "conservative")
+
+    def side_only(own: set[str], other_text: str) -> list[str]:
+        # 상대 진영 '제목 원문'에 부분 문자열로라도 존재하면 전용어가 아니다
+        # (인용구 "규제 실패"가 상대 인용구 "규제 실패 몸소 증명"에 포함되는 경우 등)
+        cands = [w for w in own if w not in common_set and w not in other_text]
+        return sorted(cands, key=lambda w: (-freq[w], -len(w)))[:3]
+
+    return {
+        "common": common,
+        "progressive": side_only(prog_tokens, cons_text),
+        "conservative": side_only(cons_tokens, prog_text),
+    }

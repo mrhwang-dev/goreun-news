@@ -79,6 +79,23 @@
         "moderate": 1,
         "conservative": 2,
         "unknown": 0
+      },
+      "framing": {
+        "note": "보수 매체는 '가계부채 부담'을 제목에 올렸고, 경제지는 '만장일치'와 '인하 시사'로 다음 결정을 부각했다. '동결'은 4개 매체 공통. ※ 예시 데이터입니다.",
+        "words": [
+          {
+            "word": "동결",
+            "side": "common"
+          },
+          {
+            "word": "가계부채 부담",
+            "side": "conservative"
+          },
+          {
+            "word": "인하 시사",
+            "side": "moderate"
+          }
+        ]
       }
     },
     {

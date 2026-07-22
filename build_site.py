@@ -1065,6 +1065,36 @@ def _render_issue(issue: dict, index: int) -> str:
         ensure_ascii=False,
     ))
     bias_dots = {"progressive": "#3b82f6", "moderate": "#9ca3af", "conservative": "#ef4444", "unknown": "#d6d3d1"}
+    frame_colors = {"progressive": "#3b82f6", "conservative": "#ef4444", "moderate": "#9ca3af", "common": "#b45309"}
+    framing = issue.get("framing") or {}
+    frame_words = framing.get("words") or []
+
+    def _hl(title: str) -> str:
+        """제목 속 프레임 단어를 성향 색으로 하이라이트."""
+        out = _esc(title)
+        for w in frame_words:
+            token = _esc(w.get("word", ""))
+            if token and token in out:
+                color = frame_colors.get(w.get("side"), "#b45309")
+                out = out.replace(
+                    token,
+                    f'<mark style="background:transparent;color:{color};font-weight:700">{token}</mark>',
+                )
+        return out
+
+    framing_html = ""
+    if framing.get("note"):
+        chips = " · ".join(
+            f'<span style="color:{frame_colors.get(w.get("side"), "#b45309")}" class="font-semibold">{_esc(w.get("word", ""))}</span>'
+            for w in frame_words
+            if w.get("word")
+        )
+        framing_html = f"""<div class="rounded-lg border border-stone-200 dark:border-neutral-700 bg-stone-50 dark:bg-neutral-900/60 p-3 mb-3">
+  <p class="text-[11px] font-bold mb-1">🔍 프레임 체크 — 같은 사건, 다른 단어 <span class="font-normal text-neutral-400">(참고용 AI 분석)</span></p>
+  <p class="text-xs text-neutral-600 dark:text-neutral-300">{_esc(framing["note"])}</p>
+  {f'<p class="mt-1.5 text-xs text-neutral-500 dark:text-neutral-400">프레임 단어: {chips}</p>' if chips else ""}
+</div>"""
+
     # 수직 타임라인: 송고 시간순(1보 → 최신)으로 사건의 흐름을 보여준다
     rows = "".join(
         f'<li class="relative" data-b="{_esc(h.get("bias", "unknown"))}" data-t="{_esc(h.get("time", ""))}">'
@@ -1078,7 +1108,7 @@ def _render_issue(issue: dict, index: int) -> str:
         )
         + f'{_favicon(h["link"])}'
         f'<span class="min-w-0"><b class="font-semibold text-xs mr-1.5" style="color:{bias_dots.get(h.get("bias", "unknown"), "#9ca3af")}">{_esc(h["outlet"])}</b>'
-        f'{_esc(h["title"])}</span></a></li>'
+        f'{_hl(h["title"])}</span></a></li>'
         for h in heads
     )
     bias_attr = _esc(json.dumps(issue.get("bias") or {}, ensure_ascii=False))
@@ -1111,6 +1141,7 @@ def _render_issue(issue: dict, index: int) -> str:
       <button type="button" class="imgsave-btn shrink-0 rounded-lg border border-stone-200 dark:border-neutral-600 px-3 py-1.5 text-xs text-neutral-500 dark:text-neutral-400 hover:text-blue-600 hover:border-blue-500" title="인스타그램용 정사각 이미지로 저장">이미지 저장</button>
     </div>
     <div class="headlines-body mt-3" hidden>
+      {framing_html}
       <div class="flex justify-end -mb-1"><button type="button" class="sort-toggle text-[10px] text-neutral-400 hover:text-blue-600 dark:hover:text-blue-400" data-mode="time">성향순 보기</button></div>
       {_render_bias_bar(issue.get("bias"))}
       <ul class="relative ml-1.5 mt-3 pl-4 border-l-2 border-stone-200 dark:border-neutral-700 flex flex-col gap-3">{rows}</ul>
