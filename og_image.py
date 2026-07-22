@@ -72,53 +72,79 @@ def build_icon(out_path: Path, size: int = 512) -> Path | None:
         return None
 
 
+def _num_press(briefing: dict) -> int:
+    try:
+        import config
+        return len(config.PRESS_FEEDS)
+    except Exception:
+        return 60
+
+
 def build_og(briefing: dict, out_path: Path, generated_at: datetime) -> Path | None:
+    """카톡·SNS 공유 썸네일(1200×630). 상단 성향 스펙트럼 띠 + 브랜드 +
+    오늘의 톱뉴스 + 하단 정보줄로 여백 없이 꽉 차게 구성한다."""
     try:
         W, H = 1200, 630
-        img = Image.new("RGB", (W, H), "#141416")
+        L = 90  # 좌측 여백
+        img = Image.new("RGB", (W, H), "#0f1012")
         d = ImageDraw.Draw(img)
 
-        # 브랜드 마크 (고르게 정렬된 세 줄)
-        mx, my, ms = 80, 84, 92
-        d.rounded_rectangle([mx, my, mx + ms, my + ms], radius=20, fill="#2563eb")
+        # 상단 성향 스펙트럼 띠(진보 파랑 · 중도 회색 · 보수 빨강) — 브랜드 시그니처
+        seg = [("#3b6ff5", 0.46), ("#6b7280", 0.08), ("#ef4444", 0.46)]
+        x = 0
+        for color, frac in seg:
+            w = int(W * frac)
+            d.rectangle([x, 0, x + w, 12], fill=color)
+            x += w
+        if x < W:
+            d.rectangle([x, 0, W, 12], fill="#ef4444")
+
+        # 브랜드 마크 + 워드마크
+        mx, my, ms = L, 78, 104
+        d.rounded_rectangle([mx, my, mx + ms, my + ms], radius=24, fill="#2563eb")
         bar_w, bar_h = int(ms * 0.56), int(ms * 0.11)
         bx = mx + (ms - bar_w) // 2
         for i, color in enumerate(("#ffffff", "#e3e8fb", "#c9d3f5")):
             by = my + int(ms * (0.26 + i * 0.18))
-            d.rounded_rectangle(
-                [bx, by, bx + bar_w, by + bar_h], radius=bar_h // 2, fill=color
-            )
+            d.rounded_rectangle([bx, by, bx + bar_w, by + bar_h], radius=bar_h // 2, fill=color)
+        d.text((mx + ms + 34, my + 2), "고른뉴스", font=_font(94), fill="#f2f2f4")
+        d.text((mx + ms + 36, my + 112), "골라 담아, 고르게 전합니다", font=_font(34), fill="#9a9aa2")
 
-        d.text((mx + ms + 32, 88), "고른뉴스", font=_font(84), fill="#ececee")
-        d.text((80, 222), "골라 담아, 고르게 전합니다", font=_font(34), fill="#98989f")
-        d.text(
-            (80, 268),
-            generated_at.strftime("%Y년 %m월 %d일 %H시 브리핑"),
-            font=_font(30),
-            fill="#7aa2ff",
-        )
-
+        # 오늘의 톱뉴스 (헤드라인) — 왼쪽 파란 액센트 바로 프레이밍
         issues = briefing.get("issues", [])
-        if issues:
-            label_font = _font(46)
-            y = 372
-            for line in _wrap(issues[0]["label"], 24):
-                d.text((80, y), line, font=label_font, fill="#ececee")
-                y += 62
+        top = issues[0]["label"] if issues else "여러 언론사의 시각을 한자리에서"
+        eyebrow_y = 300
+        d.text((L, eyebrow_y), "오늘의 주요 뉴스", font=_font(28), fill="#7aa2ff")
+        hl_y = eyebrow_y + 46
+        lines = _wrap(top, 17, max_lines=2)
+        d.rounded_rectangle([L, hl_y + 6, L + 7, hl_y + 6 + len(lines) * 70 - 16],
+                            radius=4, fill="#2563eb")
+        hf = _font(56)
+        y = hl_y
+        for line in lines:
+            d.text((L + 30, y), line, font=hf, fill="#f2f2f4")
+            y += 70
 
-        # 하단: 분야별 슬롯 비율 컬러 바
+        # 하단 정보줄 + 도메인
+        info_y = H - 78
+        d.line([L, info_y - 22, W - L, info_y - 22], fill="#26262b", width=2)
+        d.text((L, info_y), f"{_num_press(briefing)}개 언론사 교차확인 · 매시간 AI 중립 브리핑",
+               font=_font(28), fill="#9a9aa2")
+        dom = "goreunnews.cloud"
+        df = _font(30)
+        dw = d.textlength(dom, font=df)
+        d.text((W - L - dw, info_y - 2), dom, font=df, fill="#7aa2ff")
+
+        # 최하단: 분야별 슬롯 비율 컬러 바
         slots = briefing.get("slots", {})
         total = sum(slots.values()) or 1
-        x, bar_y, bar_h = 0, H - 18, 18
+        x, bar_y, bh = 0, H - 10, 10
         for cat, n in slots.items():
             w = int(W * n / total)
-            d.rectangle(
-                [x, bar_y, x + w, bar_y + bar_h],
-                fill=CATEGORY_COLORS.get(cat, "#4f6df5"),
-            )
+            d.rectangle([x, bar_y, x + w, bar_y + bh], fill=CATEGORY_COLORS.get(cat, "#4f6df5"))
             x += w
         if x < W:
-            d.rectangle([x, bar_y, W, bar_y + bar_h], fill="#2c2c31")
+            d.rectangle([x, bar_y, W, bar_y + bh], fill="#2c2c31")
 
         img.save(out_path, "PNG")
         return out_path

@@ -92,6 +92,17 @@ def set_share_base(url: str | None) -> None:
     global _SHARE_BASE
     _SHARE_BASE = url
 
+
+# 모바일 앱(Capacitor) 빌드 여부. run.py --app 로 켜면 각 페이지에 Capacitor 런타임
+# (capacitor.js — 플러그인 브리지)과 native.js 를 주입한다. 공개 웹 빌드에서는 꺼져 있어
+# 사이트가 가벼운 정적 페이지로 유지된다.
+_APP_BUILD: bool = False
+
+
+def set_app_build(enabled: bool) -> None:
+    global _APP_BUILD
+    _APP_BUILD = enabled
+
 BASE_SCRIPT = """
 // ── 다크/라이트/시스템 테마 전환 ──
 var themeBtn = document.getElementById("theme-toggle");
@@ -1665,7 +1676,7 @@ def _page(
 {banner_html}
 <script>{BASE_SCRIPT}</script>
 {f"<script>{extra_script}</script>" if extra_script else ""}
-<script src="{asset_prefix}native.js"></script>
+{f'<script src="{asset_prefix}capacitor.js"></script><script src="{asset_prefix}native.js"></script>' if _APP_BUILD else ""}
 {sentry}
 </body>
 </html>"""
@@ -1959,7 +1970,8 @@ def build(
     out_dir.mkdir(parents=True, exist_ok=True)
 
     punycode_domain = config.SITE_DOMAIN.encode("idna").decode()
-    og_url = f"https://{punycode_domain}/og.png" if build_og(briefing, out_dir / "og.png", now) else ""
+    # ?v= 는 디자인 변경 시 카카오/OG 캐시를 강제로 새로 읽게 하는 버전 태그
+    og_url = f"https://{punycode_domain}/og.png?v=3" if build_og(briefing, out_dir / "og.png", now) else ""
     # index 전용 추가 JSON-LD 그래프: WebSite(사이트 검색액션) + NewsMediaOrganization
     index_website = {
         "@type": "WebSite",
