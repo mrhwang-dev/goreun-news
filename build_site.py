@@ -1060,37 +1060,38 @@ def _render_ticker(breaking: list[dict]) -> str:
 
 
 def _render_bias_bar(bias: dict | None) -> str:
-    """성향 분포 바. 미분류 매체는 '중도'로 뭉개지 않고 '분류 없음'으로 정직하게 표기."""
+    """성향 분포 바. 전체 매체 대비 각 성향 비중 및 분류 없음 비중을 정직하게 연출."""
     if not bias:
         return ""
-    classified_total = sum(bias.get(k, 0) for k, _ in BIAS_LABELS)
-    unknown = bias.get("unknown", 0)
-    if classified_total == 0 and unknown == 0:
+    total = sum(bias.values())
+    if total == 0:
         return ""
     dot_colors = {"progressive": "#3b82f6", "moderate": "#9ca3af", "conservative": "#ef4444"}
     segments, labels = [], []
     for key, label in BIAS_LABELS:
         n = bias.get(key, 0)
-        if n and classified_total:
+        if n:
+            pct = (n / total) * 100
             segments.append(
-                f'<span class="{BIAS_BAR_CLASSES[key]}" style="width:{n / classified_total * 100:.0f}%"></span>'
+                f'<span class="{BIAS_BAR_CLASSES[key]}" style="width:{pct:.1f}%" title="{label} {n}곳 ({pct:.1f}%)"></span>'
             )
         labels.append(
             f'<span class="inline-flex items-center gap-1">'
             f'<span class="w-1.5 h-1.5 rounded-full" style="background:{dot_colors[key]}"></span>'
             f"{label} {n}</span>"
         )
+    unknown = bias.get("unknown", 0)
     if unknown:
+        pct = (unknown / total) * 100
+        segments.append(
+            f'<span class="bg-stone-300 dark:bg-neutral-600 opacity-60" style="width:{pct:.1f}%" title="분류 없음 {unknown}곳 ({pct:.1f}%)"></span>'
+        )
         labels.append(
             f'<span class="inline-flex items-center gap-1">'
             f'<span class="w-1.5 h-1.5 rounded-full bg-stone-300 dark:bg-neutral-600"></span>'
             f"분류 없음 {unknown}</span>"
         )
-    bar = (
-        f'<div class="flex h-1.5 rounded-full overflow-hidden bg-stone-200 dark:bg-neutral-700">{"".join(segments)}</div>'
-        if classified_total
-        else '<p class="text-[10px] text-neutral-400">성향 분류 정보가 있는 매체 없음</p>'
-    )
+    bar = f'<div class="flex h-1.5 rounded-full overflow-hidden bg-stone-200 dark:bg-neutral-700">{"".join(segments)}</div>'
     return f"""<div class="mb-2.5" aria-label="보도 매체 성향 분포">
   {bar}
   <div class="flex flex-wrap gap-3 text-[10px] text-neutral-400 mt-1.5">{"".join(labels)}</div>
