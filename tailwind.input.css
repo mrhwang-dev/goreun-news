@@ -18,8 +18,13 @@ details[open] .tri { transform: rotate(180deg); }
 :root[data-fs="2"] .fs-t { font-size: 17px; }
 :root[data-fs="2"] .fs-p { font-size: 15.5px; }
 #site-header { transition: transform 0.3s; }
+body, h1, h2, h3, h4, h5, h6, p, article {
+  word-break: keep-all;
+  overflow-wrap: break-word;
+}
+
 /* AI 요약 3줄 클램프 + 하단 페이드, 클릭 시 펼침 */
-.summary-wrap p { @apply line-clamp-3; }
+.summary-wrap p { @apply line-clamp-3 break-keep; }
 .summary-wrap.open p { -webkit-line-clamp: unset; }
 .summary-wrap .fade { @apply absolute bottom-0 inset-x-0 h-5 bg-gradient-to-t from-white dark:from-neutral-800 to-transparent pointer-events-none transition-opacity; }
 .summary-wrap.open .fade, .summary-wrap.no-clamp .fade { opacity: 0; }
@@ -28,10 +33,10 @@ details[open] .tri { transform: rotate(180deg); }
 .not-revealed { display: none; }
 /* 히어로 카드: 현재 보기(전체/분야)의 1위 이슈를 크게 — JS가 .is-hero 부여 */
 .is-hero { grid-column: 1 / -1; border-top-width: 4px; border-radius: 1rem; padding: 1.75rem; }
-.is-hero h3 { font-size: 1.7rem; line-height: 1.25; font-weight: 800; letter-spacing: -0.02em; }
+.is-hero h3 { font-size: 1.7rem; line-height: 1.3; font-weight: 800; letter-spacing: -0.02em; word-break: keep-all; }
 @media (min-width: 1024px) { .is-hero h3 { font-size: 2rem; } }
 .is-hero .summary-wrap { cursor: default; }
-.is-hero .summary-wrap p { -webkit-line-clamp: unset; font-size: 0.95rem; line-height: 1.7; max-width: 62ch; }
+.is-hero .summary-wrap p { -webkit-line-clamp: unset; font-size: 0.95rem; line-height: 1.75; width: 100%; max-width: 100%; word-break: keep-all; }
 .is-hero .summary-wrap .fade { opacity: 0; }
 .is-hero .bias-inline { display: block; }
 .is-hero .hero-badge { display: inline-flex; }

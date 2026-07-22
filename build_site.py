@@ -1158,9 +1158,9 @@ def _render_issue(issue: dict, index: int) -> str:
       <button type="button" class="scrap-btn text-base leading-none text-neutral-300 dark:text-neutral-600 hover:text-amber-500" aria-label="스크랩" data-scrap="{scrap_payload}">☆</button>
     </span>
   </div>
-  <h3 class="fs-t mt-2.5 mb-1.5 font-bold text-[15px] leading-snug [text-wrap:balance]">{_esc(issue["label"])}</h3>
+  <h3 class="fs-t mt-2.5 mb-1.5 font-bold text-[15px] leading-snug break-keep [text-wrap:balance]">{_esc(issue["label"])}</h3>
   <div class="summary-wrap relative cursor-pointer mb-3.5" title="클릭하면 전체 요약을 봅니다">
-    <p class="fs-p text-sm text-neutral-600 dark:text-neutral-300">{_esc(issue["summary"])}</p>
+    <p class="fs-p text-sm text-neutral-600 dark:text-neutral-300 break-keep">{_esc(issue["summary"])}</p>
     <span class="fade"></span>
   </div>
   <div class="bias-inline hidden mb-3.5">{_render_bias_bar(issue.get("bias"))}</div>
