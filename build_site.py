@@ -1824,7 +1824,7 @@ def _render_issue(issue: dict, index: int) -> str:
   <div class="flex items-center justify-between text-xs">
     <span class="flex items-center gap-2 flex-wrap">
       <span class="font-semibold rounded-full px-2.5 py-0.5" style="color:{color};background:{color}1f">{_esc(issue["category"])}</span>
-      <span class="hero-badge hidden items-center font-bold rounded-full px-2.5 py-0.5 bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400">📢 {outlet_count}개 매체 집중 보도</span>
+      {f'<span class="hero-badge hidden items-center font-bold rounded-full px-2.5 py-0.5 bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400">📢 {outlet_count}개 매체 집중 보도</span>' if outlet_count >= 2 else ""}
     </span>
     <span class="flex items-center gap-2">
       <span class="text-neutral-400">{outlet_count}개 매체</span>
@@ -1971,7 +1971,7 @@ def build(
 
     punycode_domain = config.SITE_DOMAIN.encode("idna").decode()
     # ?v= 는 디자인 변경 시 카카오/OG 캐시를 강제로 새로 읽게 하는 버전 태그
-    og_url = f"https://{punycode_domain}/og.png?v=3" if build_og(briefing, out_dir / "og.png", now) else ""
+    og_url = f"https://{punycode_domain}/og.png?v=4" if build_og(briefing, out_dir / "og.png", now) else ""
     # index 전용 추가 JSON-LD 그래프: WebSite(사이트 검색액션) + NewsMediaOrganization
     index_website = {
         "@type": "WebSite",
@@ -3095,6 +3095,7 @@ def build_community_page(
             },
             ensure_ascii=False,
         ))
+        thumb_html = ""
         if p.get("thumb"):
             # 원본 서버 핫링크 썸네일 — 로드 실패 시 자동 숨김
             thumb_html = (
