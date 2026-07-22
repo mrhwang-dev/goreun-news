@@ -1404,6 +1404,13 @@ def build(
         encoding="utf-8",
     )
 
+    # AdSense ads.txt — 광고 게재 필수 파일 (소유권 확인 보조 수단이기도 함)
+    if config.ADSENSE_CLIENT_ID:
+        pub_id = config.ADSENSE_CLIENT_ID.replace("ca-", "", 1)
+        (out_dir / "ads.txt").write_text(
+            f"google.com, {pub_id}, DIRECT, f08c47fec0942fa0\n", encoding="utf-8"
+        )
+
     build_community_page(community, out_dir, generated_at, now, updated, stamp)
     build_scrapbook_page(out_dir, generated_at, now, updated, stamp)
     build_blindspot_page(briefing, out_dir, generated_at, updated, stamp)
