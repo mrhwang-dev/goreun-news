@@ -102,7 +102,12 @@ tabs.forEach(function (tab) {
     var key = tab.dataset.filter;
     var val = tab.dataset.value;
     document.querySelectorAll("[data-" + key + "]").forEach(function (el) {
-      el.hidden = val !== "전체" && el.dataset[key] !== val;
+      if (val === "전체") {
+        // 전체 탭: 3개 이하 매체 보도(minor)는 분야 탭 전용
+        el.hidden = key === "cat" && el.dataset.minor === "1";
+      } else {
+        el.hidden = el.dataset[key] !== val;
+      }
     });
   });
 });

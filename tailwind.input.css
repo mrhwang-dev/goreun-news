@@ -55,3 +55,9 @@ body, h1, h2, h3, h4, h5, h6, p, article {
   .ticker-item, .tri, #site-header, .summary-wrap .fade { transition: none; }
   .flash-ring { animation: none; box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.5); }
 }
+/* 보도량 계층 카드: 많이 보도될수록 크게 */
+.card-lg h3 { font-size: 1.25rem; line-height: 1.3; }
+.card-lg .summary-wrap p { -webkit-line-clamp: 4; font-size: 0.95rem; }
+.card-sm { padding: 1rem; }
+.card-sm h3 { font-size: 0.85rem; margin-top: 0.375rem; }
+.card-sm .summary-wrap p { -webkit-line-clamp: 2; font-size: 0.78rem; }
