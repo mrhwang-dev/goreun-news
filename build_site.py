@@ -146,6 +146,15 @@ tabs.forEach(function (tab) {
   });
 });
 
+// ── URL Hash에 따른 탭 자동 선택 ──
+if (window.location.hash.startsWith("#cat=")) {
+  var targetVal = decodeURIComponent(window.location.hash.substring(5));
+  var targetTab = Array.prototype.find.call(tabs, function(t) { return t.dataset.value === targetVal; });
+  if (targetTab) {
+    targetTab.click();
+  }
+}
+
 // ── 속보 티커: 단일 요소 내용 교체(페이드) — 항목 겹침 원천 차단 ──
 var tickerLink = document.getElementById("ticker-link");
 var tickerDataEl = document.getElementById("ticker-data");
@@ -2386,7 +2395,7 @@ SEARCH_SCRIPT = """
   function render() {
     var q = (input.value || "").trim().toLowerCase();
     var d = dateSel.value;
-    var toks = q ? q.split(/\s+/) : [];
+    var toks = q ? q.split(/\\s+/) : [];
     var res = items.filter(function (it) {
       if (d && it.d !== d) return false;
       if (!toks.length) return true;

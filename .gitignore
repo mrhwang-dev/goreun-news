@@ -8,3 +8,8 @@ data/bias_model_state.json
 .venv/
 *_preview.png
 
+# Node / Capacitor
+node_modules/
+# iOS/Android 네이티브 프로젝트는 커밋하되(네이티브 설정 포함),
+# 빌드 산출물·복사된 웹 자산은 각 플랫폼 .gitignore(ios/.gitignore, android/.gitignore)가 제외한다.
+
