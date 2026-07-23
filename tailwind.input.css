@@ -5,6 +5,11 @@
 /* hidden 속성은 어떤 display 유틸리티(flex 등)보다 우선한다 */
 [hidden] { display: none !important; }
 
+/* 의견 성향 버튼(진보/중도/보수) 선택 상태 — 정치색으로 채움 */
+.op-lean-btn.op-lean-sel[data-x="-1"] { background:#3b82f6; border-color:#3b82f6; color:#fff; }
+.op-lean-btn.op-lean-sel[data-x="0"]  { background:#737373; border-color:#737373; color:#fff; }
+.op-lean-btn.op-lean-sel[data-x="1"]  { background:#ef4444; border-color:#ef4444; color:#fff; }
+
 /* 키보드 포커스 시 뚜렷한 링 — 입력요소의 focus:outline-none(투명 아웃라인)을 이기도록 !important */
 input:focus-visible,
 textarea:focus-visible,

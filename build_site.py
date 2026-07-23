@@ -1917,7 +1917,15 @@ OPINION_SCRIPT = """(function () {
   document.querySelectorAll("details[data-opinion]").forEach(function (det) {
     var ikey = det.getAttribute("data-ikey");
     var box = det.querySelector(".op-map"), form = det.querySelector(".op-form"),
-        ta = det.querySelector("textarea"), sl = det.querySelector("input[type=range]");
+        ta = det.querySelector("textarea"), leanBtns = det.querySelectorAll(".op-lean-btn");
+    var selX = 0;
+    leanBtns.forEach(function (b) {
+      b.addEventListener("click", function () {
+        selX = parseFloat(b.getAttribute("data-x")) || 0;
+        leanBtns.forEach(function (x) { x.classList.remove("op-lean-sel"); x.setAttribute("aria-pressed", "false"); });
+        b.classList.add("op-lean-sel"); b.setAttribute("aria-pressed", "true");
+      });
+    });
     var loaded = false, mineId = null;
     function load() {
       fetch(URL + "/rest/v1/opinions?issue_key=eq." + encodeURIComponent(ikey) + "&status=eq.visible&select=id,body,x,y&order=created_at.desc&limit=200", { headers: HD })
@@ -1935,7 +1943,7 @@ OPINION_SCRIPT = """(function () {
       var body = (ta.value || "").trim();
       if (body.length < 2) return;
       var btn = form.querySelector("button"); btn.disabled = true;
-      fetch(URL + "/functions/v1/submit-opinion", { method: "POST", headers: Object.assign({ "Content-Type": "application/json" }, HD), body: JSON.stringify({ issue_key: ikey, body: body, x: parseFloat(sl.value) || 0 }) })
+      fetch(URL + "/functions/v1/submit-opinion", { method: "POST", headers: Object.assign({ "Content-Type": "application/json" }, HD), body: JSON.stringify({ issue_key: ikey, body: body, x: selX }) })
         .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
         .then(function (res) {
           if (res.ok && res.d && res.d.id) { markCommented(ikey); loaded = true; mineId = res.d.id; ta.value = ""; load(); }
@@ -1989,10 +1997,10 @@ def _opinion_map_html(issue: dict) -> str:
     <div class="op-map min-h-[3rem] text-xs text-neutral-400"></div>
     <form class="op-form mt-2 flex flex-col gap-2">
       <textarea maxlength="200" rows="2" required placeholder="이 이슈에 대한 내 생각을 한두 문장으로…" class="w-full rounded-lg border border-stone-300 dark:border-neutral-600 bg-white dark:bg-neutral-900 px-2.5 py-1.5 text-sm resize-none focus:outline-none focus:border-violet-500"></textarea>
-      <div class="flex items-center gap-2 text-[11px] text-neutral-500 dark:text-neutral-400">
-        <span class="text-blue-500 font-medium">진보</span>
-        <input type="range" min="-1" max="1" step="0.1" value="0" class="flex-1 accent-violet-500" aria-label="내 성향 위치">
-        <span class="text-red-500 font-medium">보수</span>
+      <div class="op-lean flex items-center gap-1.5" role="group" aria-label="내 성향 선택">
+        <button type="button" class="op-lean-btn flex-1 rounded-lg border border-stone-300 dark:border-neutral-600 py-1.5 text-[11px] font-medium text-blue-600 dark:text-blue-400 transition-colors" data-x="-1" aria-pressed="false">진보</button>
+        <button type="button" class="op-lean-btn op-lean-sel flex-1 rounded-lg border border-stone-300 dark:border-neutral-600 py-1.5 text-[11px] font-medium text-neutral-600 dark:text-neutral-300 transition-colors" data-x="0" aria-pressed="true">중도</button>
+        <button type="button" class="op-lean-btn flex-1 rounded-lg border border-stone-300 dark:border-neutral-600 py-1.5 text-[11px] font-medium text-red-600 dark:text-red-400 transition-colors" data-x="1" aria-pressed="false">보수</button>
       </div>
       <button type="submit" class="self-end rounded-lg bg-violet-600 hover:bg-violet-700 text-white text-xs font-medium px-3 py-1.5">댓글 남기기</button>
     </form>
