@@ -3146,10 +3146,31 @@ def build_community_page(
   {thumb_html}
 </article>""")
 
-    trend_chips = "".join(
-        f'<span class="text-xs rounded-full border border-stone-200 dark:border-neutral-600 px-2.5 py-1 text-neutral-600 dark:text-neutral-300">#{_esc(w)}</span>'
-        for w in _trend_keywords(posts)
-    ) or '<span class="text-xs text-neutral-400">키워드 집계 중</span>'
+    trend_words = _trend_keywords(posts)
+    # 데이터랩(선택): 실제 검색량이 상승 중인 키워드를 앞으로 + 📈 표시
+    trends: dict[str, dict] = {}
+    if config.ENABLE_DATALAB:
+        try:
+            from fetch_datalab import fetch_trends
+            trends = fetch_trends(trend_words)
+        except Exception as e:
+            print(f"[경고] 데이터랩 단계 실패 — 건너뜀: {e}")
+    trend_words = sorted(
+        trend_words,
+        key=lambda w: (trends.get(w, {}).get("rising", False), trends.get(w, {}).get("score", 0.0)),
+        reverse=True,
+    )
+
+    def _trend_chip(w: str) -> str:
+        rising = trends.get(w, {}).get("rising")
+        cls = (
+            "border-rose-300 text-rose-600 dark:border-rose-500/40 dark:text-rose-400"
+            if rising
+            else "border-stone-200 dark:border-neutral-600 text-neutral-600 dark:text-neutral-300"
+        )
+        return f'<span class="text-xs rounded-full border {cls} px-2.5 py-1">{"📈 " if rising else ""}#{_esc(w)}</span>'
+
+    trend_chips = "".join(_trend_chip(w) for w in trend_words) or '<span class="text-xs text-neutral-400">키워드 집계 중</span>'
 
     marker_news = [p for p in posts if p.get("news") and not p.get("board_news")]
     board_news = [p for p in posts if p.get("news") and p.get("board_news")]

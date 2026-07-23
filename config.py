@@ -189,6 +189,9 @@ ENABLE_NAVER_SEARCH = os.environ.get("ENABLE_NAVER_SEARCH", "").strip().lower() 
 # SOURCES.md 기준 콘텐츠 이용이 제한된 매체 도메인 — 검색 보강 결과에서도 제외한다.
 NAVER_EXCLUDE_DOMAINS = {"hani.co.kr", "sbs.co.kr"}
 
+# 네이버 데이터랩 검색어트렌드 (기본 OFF). 트렌드 키워드의 실제 검색량 상승 여부 표시.
+ENABLE_DATALAB = os.environ.get("ENABLE_DATALAB", "").strip().lower() in ("1", "true", "yes", "on")
+
 # 의미 기반 클러스터 병합 (선택, 기본 OFF). CLOVA 임베딩으로 어휘가 달라도 같은
 # 사건인 클러스터를 합친다. CLOVA_API_KEY 필요.
 ENABLE_EMBEDDING = os.environ.get("ENABLE_EMBEDDING", "").strip().lower() in ("1", "true", "yes", "on")

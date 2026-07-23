@@ -62,6 +62,8 @@ jobs:
           NAVER_CLIENT_ID: ${{ secrets.NAVER_CLIENT_ID }}
           NAVER_CLIENT_SECRET: ${{ secrets.NAVER_CLIENT_SECRET }}
           ENABLE_NAVER_SEARCH: ${{ vars.ENABLE_NAVER_SEARCH }}
+          # 네이버 데이터랩 트렌드. 변수 ENABLE_DATALAB=1 로 켠다.
+          ENABLE_DATALAB: ${{ vars.ENABLE_DATALAB }}
           # LLM 라벨링 스위치. Actions 변수 ENABLE_LLM_LABELING=1 로 켜면 LLM 라벨링,
           # 미설정(빈 값)이면 무-API 알고리즘 모드. 실패 시 자동으로 알고리즘 폴백.
           ENABLE_LLM_LABELING: ${{ vars.ENABLE_LLM_LABELING }}
