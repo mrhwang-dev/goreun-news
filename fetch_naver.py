@@ -21,7 +21,7 @@ from email.utils import parsedate_to_datetime
 
 import config
 
-ENDPOINT = "https://openapi.naver.com/v1/search/news.json"
+ENDPOINT = "https://naverapihub.apigw.ntruss.com/search/v1/news"  # NAVER API HUB 게이트웨이
 DISPLAY = 100          # 질의당 최대 (네이버 상한 100)
 SLEEP_BETWEEN = 0.1    # 질의 간 간격
 
@@ -92,12 +92,15 @@ def fetch_naver_news() -> list[dict]:
 
     for query in QUERIES:
         url = ENDPOINT + "?" + urllib.parse.urlencode(
-            {"query": query, "display": DISPLAY, "sort": "date"}
+            {"query": query, "display": DISPLAY, "start": 1, "sort": "date", "format": "json"}
         )
         try:
             req = urllib.request.Request(
                 url,
-                headers={"X-Naver-Client-Id": cid, "X-Naver-Client-Secret": csec},
+                headers={
+                    "X-NCP-APIGW-API-KEY-ID": cid,      # Client ID
+                    "X-NCP-APIGW-API-KEY": csec,        # Client Secret
+                },
             )
             with urllib.request.urlopen(req, timeout=15) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
