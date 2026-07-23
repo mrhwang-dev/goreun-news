@@ -2848,7 +2848,6 @@ def build_blindspot_page(
     <p class="text-xs text-neutral-400 max-w-[80ch]">블라인드스팟은 한쪽 성향 매체만 보도한 이슈입니다. 지난 항목도 날짜별로 계속 쌓입니다. 성향 분류는 참고용 일반 분류입니다.</p>
   </div>
   {"".join(sections)}
-  {_date_strip(dates, "", "anchor")}
 </div>"""
 
     page = _page(
@@ -2963,7 +2962,6 @@ def build_frame_page(
     <p class="text-xs text-neutral-400 max-w-[80ch]">🔍 프레임 체크 — 같은 사건을 다룬 매체들이 제목에서 어떤 단어를 골랐는지 해부합니다. 각 헤드라인 앞의 일시는 아카이브에서 처음 목격된 최초 보도 시점입니다. 참고용 AI 분석.</p>
   </div>
   {body}
-  {_date_strip(dates, "", "anchor")}
 </div>"""
 
     page = _page(
