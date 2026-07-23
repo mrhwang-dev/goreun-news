@@ -2523,6 +2523,7 @@ def build(
     briefing: dict, community: list[dict], out_dir: Path,
     archive_stamps: list[str] | None = None,
     snapshots: list[tuple[str, dict]] | None = None,
+    issue_snapshots: list[tuple[str, dict]] | None = None,
 ) -> Path:
     now = datetime.now(ZoneInfo("Asia/Seoul"))
     generated_at = briefing.get("generated_at", now.isoformat())
@@ -2724,7 +2725,9 @@ def build(
     build_frame_page(briefing, out_dir, generated_at, updated, stamp, snapshots or [], now)
     # 이슈별 영구 URL(/issue/<id>/): 현재 브리핑 + 보관 스냅샷의 이슈를 스토리 단위로 합쳐 생성.
     # 색인 대상 고유 페이지 코퍼스를 만들어 "시간별 변동 4개 페이지" 구조를 보완한다.
-    issue_ids = build_issue_pages(_dedupe_issues(briefing, snapshots or []), out_dir, now)
+    # issue_snapshots(넓은 보관창)가 주어지면 그걸, 없으면 기본 snapshots(72)을 쓴다.
+    issue_pool = issue_snapshots if issue_snapshots is not None else (snapshots or [])
+    issue_ids = build_issue_pages(_dedupe_issues(briefing, issue_pool), out_dir, now)
     build_seo_files(briefing, out_dir, punycode_domain, now, archive_stamps or [], issue_ids)
     return out_dir / "index.html"
 
@@ -3470,7 +3473,6 @@ def build_archive_pages(
 
 
 # ── 이슈별 영구 URL: /issue/<id>/ ───────────────────────────────────────
-_ISSUE_PAGES_MAX = 500  # 빌드 용량·과다 페이지(스케일드 콘텐츠 오인) 방지 상한
 
 
 def _issue_id(issue: dict) -> str:
@@ -3526,9 +3528,9 @@ def build_issue_pages(
         reverse=True,
     )
     dropped = 0
-    if len(ordered) > _ISSUE_PAGES_MAX:
-        dropped = len(ordered) - _ISSUE_PAGES_MAX
-        ordered = ordered[:_ISSUE_PAGES_MAX]
+    if len(ordered) > config.ISSUE_PAGE_MAX:
+        dropped = len(ordered) - config.ISSUE_PAGE_MAX
+        ordered = ordered[:config.ISSUE_PAGE_MAX]
 
     prev_share = _SHARE_BASE
     stamp_footer = f"ⓒ {_esc(config.SITE_TITLE)} ({_esc(config.SITE_DOMAIN)})"
@@ -3572,7 +3574,7 @@ def build_issue_pages(
         (d / "index.html").write_text(page, encoding="utf-8")
     set_share_base(prev_share)
     if dropped:
-        print(f"[이슈 페이지] 상한 {_ISSUE_PAGES_MAX} 적용 — 오래된 {dropped}개 제외")
+        print(f"[이슈 페이지] 상한 {config.ISSUE_PAGE_MAX} 적용 — 오래된 {dropped}개 제외")
     print(f"이슈 영구 페이지 {len(ordered)}개 렌더링 (/issue/<id>/)")
     return [iid for iid, _ in ordered]
 

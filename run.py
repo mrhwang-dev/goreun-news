@@ -26,10 +26,14 @@ ARCHIVE_KEEP = 72  # 사이트에 렌더링할 최근 스냅샷 수 (3일치)
 from db import get_connection
 
 
-def _load_snapshots() -> list[tuple[str, dict]]:
-    """아카이브 스냅샷을 최신순으로 1회 로드한다 (성향 모델·렌더링 공용)."""
+def _load_snapshots(limit: int = ARCHIVE_KEEP) -> list[tuple[str, dict]]:
+    """아카이브 스냅샷을 최신순으로 로드한다 (성향 모델·렌더링 공용).
+
+    limit: 로드할 최신 스냅샷 수. 기본은 사이트 렌더용 72(3일). 이슈 영구 페이지는
+    더 넓은 창(config.ISSUE_PAGE_RETENTION_DAYS)을 요청한다.
+    """
     snapshots: list[tuple[str, dict]] = []
-    for f in sorted((ROOT / "archive").glob("*.json"), reverse=True)[:ARCHIVE_KEEP]:
+    for f in sorted((ROOT / "archive").glob("*.json"), reverse=True)[:limit]:
         try:
             snapshots.append((f.stem, json.loads(f.read_text(encoding="utf-8"))))
         except json.JSONDecodeError:
@@ -487,10 +491,14 @@ def main() -> None:
     community = filtered_community
     briefing["issues"].extend(game_issues)
 
+    # 이슈 영구 페이지용: 렌더용 72개보다 넓은 보관창을 로드(롤링 404 방지).
+    # archive/*.json은 영구 커밋되므로 이 창 안의 이슈는 매 빌드마다 /issue/<id>/로 재생성된다.
+    issue_snaps = _load_snapshots(limit=config.ISSUE_PAGE_RETENTION_DAYS * 24)
     out_path = build(
         briefing, community, ROOT / "site",
         archive_stamps=[s for s, _ in snapshots],
         snapshots=snapshots,
+        issue_snapshots=issue_snaps,
     )
     if snapshots:
         build_archive_pages(snapshots, ROOT / "site", datetime.now(ZoneInfo("Asia/Seoul")))
