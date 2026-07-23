@@ -2085,6 +2085,40 @@ RDN_SCRIPT = """(function () {
     + '<p class="text-sm text-neutral-700 dark:text-neutral-200 mb-2">최근 <b>' + over + '</b> 성향 기사를 많이 읽으셨어요. <b>' + wantKo + '</b> 시각이 강한 이 이슈도 살펴보세요.</p>'
     + '<ul class="flex flex-col gap-1.5">' + picks.map(function (o) { return '<li><a href="#' + o.id + '" class="text-sm text-emerald-700 dark:text-emerald-300 hover:underline break-keep">\\u2192 ' + esc(o.label) + '</a></li>'; }).join("") + '</ul></div>';
   box.hidden = false;
+
+  // ── RDN 피드 인젝션: 반대 성향(want)·중립 이슈를 피드 상위에 ~25% 무작위 주입(투명 배지) ──
+  // 소비가 한 성향으로 치우쳤을 때만 개입(위의 균형 가드를 이미 통과). 필터버블 완화 목적.
+  var feed = document.querySelector('section[aria-label="주요 이슈"]');
+  if (feed) {
+    var cards = [].slice.call(feed.querySelectorAll('article[data-cat]:not(.not-revealed)'));
+    if (cards.length >= 4) {
+      function leanOf(a) {
+        var b; try { b = JSON.parse(a.getAttribute("data-bias") || "{}"); } catch (e) { return "neutral"; }
+        var p = b.progressive || 0, n = b.conservative || 0;
+        if (p > n && p >= 2) return "progressive";
+        if (n > p && n >= 2) return "conservative";
+        return "neutral";  // 중립/객관 사실 보도
+      }
+      // 반대 성향(want) 또는 중립 이슈 = 균형 주입 후보(키워드 고정 카드 제외)
+      var balance = cards.filter(function (a) { return !a.classList.contains("kw-hit") && (leanOf(a) === want || leanOf(a) === "neutral"); });
+      var target = Math.max(1, Math.round(cards.length * 0.25));  // 상위의 ~25%
+      for (var i = balance.length - 1; i > 0; i--) { var j = Math.floor(Math.random() * (i + 1)); var t = balance[i]; balance[i] = balance[j]; balance[j] = t; }  // 셔플
+      var chosen = balance.slice(0, target);
+      // 히어로(첫 카드) 바로 다음에 모아 배치 — 확실한 넛지. 키워드 고정 카드는 유지.
+      var nonPinned = cards.filter(function (a) { return !a.classList.contains("kw-hit"); });
+      var anchor = nonPinned.length > 1 ? nonPinned[1] : null;
+      chosen.forEach(function (a) {
+        if (!a.querySelector(".rdn-badge")) {
+          var badge = document.createElement("div");
+          badge.className = "rdn-badge inline-flex items-center gap-1 rounded-full bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 text-[10px] font-bold px-2 py-0.5 mb-2";
+          badge.textContent = "\\uD83D\\uDD00 균형 추천 — 평소와 다른 시각";
+          a.insertBefore(badge, a.firstChild);
+        }
+        if (anchor && a !== anchor) feed.insertBefore(a, anchor);  // 히어로 다음에 순차 삽입
+      });
+      if (typeof updateHero === "function") updateHero();
+    }
+  }
 })();"""
 
 
