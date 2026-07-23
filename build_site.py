@@ -2244,7 +2244,6 @@ def _render_issue(issue: dict, index: int, opinions: bool = False) -> str:
   </div>
   <div class="bias-inline hidden mb-3.5">{_render_bias_bar(issue.get("bias"))}</div>
   {constructive_html}
-  {opinion_html}
   <div class="card-foot border-t border-stone-200 dark:border-neutral-700 pt-3">
     <div class="flex items-center gap-2">
       <details class="headlines-toggle">
@@ -2264,6 +2263,7 @@ def _render_issue(issue: dict, index: int, opinions: bool = False) -> str:
       <ul class="relative ml-1.5 mt-3 pl-4 border-l-2 border-stone-200 dark:border-neutral-700 flex flex-col gap-3">{rows}</ul>
     </div>
   </div>
+  {opinion_html}
 {ld_script}
 </article>"""
 
