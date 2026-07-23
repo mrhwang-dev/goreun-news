@@ -665,6 +665,21 @@ if (obModal && !obSeen()) {
   obModal.hidden = false;
 }
 
+// ── 뉴스 다이어트: 클릭한 기사의 성향을 로컬에만 기록 (무추적, 무서버) ──
+document.addEventListener("click", function (e) {
+  var a = e.target.closest && e.target.closest('a[href^="http"]');
+  if (!a) return;
+  var bEl = a.closest("[data-b]");
+  var b = bEl && bEl.getAttribute("data-b");
+  if (!b) return;
+  try {
+    var arr = JSON.parse(localStorage.getItem("goreun_diet") || "[]");
+    arr.push({ t: Date.now(), b: b });
+    var cut = Date.now() - 14 * 864e5;  // 14일치만 보관
+    localStorage.setItem("goreun_diet", JSON.stringify(arr.filter(function (x) { return x.t >= cut; })));
+  } catch (err) {}
+}, true);
+
 // ── 스크랩: 로그인해야 사용 가능 ──
 document.querySelectorAll(".scrap-btn").forEach(function (btn) {
   paintStar(btn, isScrapped(JSON.parse(btn.dataset.scrap).id));
@@ -1553,6 +1568,7 @@ def _page(
             ("frame", "프레임 체크", "frame.html"),
             ("community", "커뮤니티", "community.html"),
             ("scrapbook", "스크랩북", "scrapbook.html"),
+            ("diet", "뉴스 다이어트", "diet.html"),
         )
     )
     tabs_nav = (
@@ -1820,7 +1836,7 @@ def _render_issue(issue: dict, index: int) -> str:
             _dots += (
                 f'<a href="{_esc(_h["link"])}" target="_blank" rel="noopener nofollow" '
                 f'class="absolute top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white dark:border-neutral-800 {_sz}" '
-                f'style="left:{_pct:.1f}%;background:{_c}" title="{_esc(_h["outlet"])} · {_esc(_h.get("time", ""))}"></a>'
+                f'data-b="{_esc(_h.get("bias", "unknown"))}" style="left:{_pct:.1f}%;background:{_c}" title="{_esc(_h["outlet"])} · {_esc(_h.get("time", ""))}"></a>'
             )
         _ig = _tl[0].get("bias")
         _opp = {"progressive": "conservative", "conservative": "progressive"}.get(_ig)
@@ -2262,6 +2278,7 @@ def build(
 
     build_community_page(community, out_dir, generated_at, now, updated, stamp)
     build_scrapbook_page(out_dir, generated_at, now, updated, stamp)
+    build_diet_page(out_dir, generated_at, now, updated, stamp)
     build_docs(out_dir, generated_at, updated, stamp)
     build_newsletter_page(briefing, out_dir, now, archive_stamps[0] if archive_stamps else None)
     build_blindspot_page(briefing, out_dir, generated_at, updated, stamp, snapshots or [], now)
@@ -3425,5 +3442,98 @@ def build_scrapbook_page(
         noindex=True,  # 개인화 페이지 — 검색 색인에서 제외
     )
     out_path = out_dir / "scrapbook.html"
+    out_path.write_text(page, encoding="utf-8")
+    return out_path
+
+
+DIET_SCRIPT = """(function () {
+  var KEY = "goreun_diet";
+  var BKO = { progressive: "진보", moderate: "중도", conservative: "보수", unknown: "분류 없음" };
+  var BCOL = { progressive: "#3b82f6", moderate: "#9ca3af", conservative: "#ef4444", unknown: "#d6d3d1" };
+  var arr;
+  try { arr = JSON.parse(localStorage.getItem(KEY) || "[]"); } catch (e) { arr = []; }
+  arr = arr.filter(function (x) { return x.t >= Date.now() - 7 * 864e5; });  // 최근 7일
+  var empty = document.getElementById("diet-empty"), main = document.getElementById("diet-main");
+  if (!arr.length) { if (empty) empty.hidden = false; return; }
+  if (main) main.hidden = false;
+  var counts = {}, total = arr.length;
+  arr.forEach(function (x) { counts[x.b] = (counts[x.b] || 0) + 1; });
+  document.getElementById("diet-total").textContent = "· 총 " + total + "개";
+  var bar = document.getElementById("diet-bar"), legend = document.getElementById("diet-legend");
+  ["progressive", "moderate", "conservative", "unknown"].forEach(function (b) {
+    var c = counts[b] || 0; if (!c) return;
+    var pct = Math.round(c / total * 100);
+    var seg = document.createElement("div");
+    seg.style.width = pct + "%"; seg.style.background = BCOL[b]; seg.title = BKO[b] + " " + pct + "%";
+    bar.appendChild(seg);
+    var li = document.createElement("li");
+    li.className = "flex items-center gap-1.5";
+    li.innerHTML = '<span class="inline-block w-2.5 h-2.5 rounded-full" style="background:' + BCOL[b] + '"></span>' + BKO[b] + ' <b class="tabular-nums">' + pct + '%</b>';
+    legend.appendChild(li);
+  });
+  var prog = counts.progressive || 0, cons = counts.conservative || 0;
+  var pts = counts[prog >= cons ? "conservative" : "progressive"] || 0;  // 반대 성향 클릭 = 시야 확장
+  document.getElementById("diet-points").textContent = pts;
+  var badge = "\\uD83C\\uDF30", blabel = "반대 시각을 읽어보세요";
+  if (pts >= 30) { badge = "\\uD83C\\uDF33"; blabel = "열린 시야"; }
+  else if (pts >= 15) { badge = "\\uD83C\\uDF3F"; blabel = "균형 잡힌 독자"; }
+  else if (pts >= 5) { badge = "\\uD83C\\uDF31"; blabel = "새싹 단계"; }
+  document.getElementById("diet-badge").textContent = badge;
+  document.getElementById("diet-badge-label").textContent = blabel;
+  var pPct = Math.round(prog / total * 100), cPct = Math.round(cons / total * 100), msg;
+  if (!prog && !cons) msg = "아직 진보·보수로 분류된 기사를 읽지 않았어요.";
+  else if (Math.abs(pPct - cPct) <= 15) msg = "진보·보수를 고르게 읽고 있어요. 균형 잡힌 소비예요.";
+  else if (prog > cons) msg = "이번 주는 진보 성향(" + pPct + "%)에 치우쳤어요. 보수 시각도 한 번 챙겨볼까요?";
+  else msg = "이번 주는 보수 성향(" + cPct + "%)에 치우쳤어요. 진보 시각도 한 번 챙겨볼까요?";
+  document.getElementById("diet-msg").textContent = msg;
+})();"""
+
+
+def build_diet_page(out_dir: Path, generated_at: str, now: datetime, updated: str, stamp: str) -> Path:
+    main_html = """<div class="max-w-2xl mx-auto py-6 flex flex-col gap-6">
+  <div>
+    <h1 class="text-xl font-extrabold tracking-tight">나의 뉴스 다이어트</h1>
+    <p class="text-xs text-neutral-400 mt-1">최근 7일간 내가 클릭해 읽은 기사의 성향 분포예요. 이 기록은 <b>이 브라우저에만</b> 저장되며 어디로도 전송되지 않습니다.</p>
+  </div>
+  <div id="diet-empty" hidden class="text-center text-sm text-neutral-400 py-16">아직 읽은 기사가 없어요.<br>뉴스 카드에서 '매체별 헤드라인'을 열고 기사를 클릭하면 여기에 식단이 쌓입니다.</div>
+  <section id="diet-main" hidden class="flex flex-col gap-5">
+    <div class="rounded-xl border border-stone-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 p-5">
+      <h2 class="text-sm font-bold mb-3">이번 주 성향 식단 <span id="diet-total" class="font-normal text-neutral-400 text-xs"></span></h2>
+      <div id="diet-bar" class="flex h-5 w-full rounded-full overflow-hidden bg-stone-100 dark:bg-neutral-700"></div>
+      <ul id="diet-legend" class="mt-3 flex flex-wrap gap-x-5 gap-y-1 text-sm text-neutral-600 dark:text-neutral-300"></ul>
+      <p id="diet-msg" class="mt-4 text-xs text-neutral-500 dark:text-neutral-400 leading-relaxed"></p>
+    </div>
+    <div class="rounded-xl border border-stone-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 p-5">
+      <h2 class="text-sm font-bold mb-1">시야 확장 포인트</h2>
+      <p class="text-[11px] text-neutral-400 mb-4">평소 많이 읽는 성향과 <b>반대</b> 성향의 기사를 읽을 때마다 쌓여요.</p>
+      <div class="flex items-center gap-4">
+        <div id="diet-badge" class="text-5xl leading-none">🌰</div>
+        <div>
+          <div id="diet-points" class="text-2xl font-extrabold tabular-nums">0</div>
+          <div id="diet-badge-label" class="text-xs text-neutral-400"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+</div>"""
+    page = _page(
+        title=f"나의 뉴스 다이어트 — {config.SITE_TITLE}",
+        canonical="diet.html",
+        description="내가 읽은 뉴스의 성향 분포를 돌아보는 개인 대시보드 (이 브라우저에만 저장).",
+        active="diet",
+        generated_at=generated_at,
+        feed="",
+        updated_label=updated,
+        head_extra="",
+        tabs_html="",
+        after_header="",
+        main_html=main_html,
+        footer_notes=["읽은 기사 기록은 이 브라우저의 로컬 저장소(localStorage)에만 저장되며 외부로 전송되지 않습니다."],
+        site_stamp=stamp,
+        extra_script=DIET_SCRIPT,
+        og_type="website",
+        noindex=True,
+    )
+    out_path = out_dir / "diet.html"
     out_path.write_text(page, encoding="utf-8")
     return out_path
