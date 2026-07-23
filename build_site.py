@@ -2200,7 +2200,7 @@ def _opinion_map_html(issue: dict) -> str:
 </details>"""
 
 
-def _render_issue(issue: dict, index: int, opinions: bool = False) -> str:
+def _render_issue(issue: dict, index: int, opinions: bool = False, permalink: str = "") -> str:
     ld_json = json.dumps({
         "@context": "https://schema.org",
         "@type": "NewsArticle",
@@ -2366,6 +2366,7 @@ def _render_issue(issue: dict, index: int, opinions: bool = False) -> str:
           매체별 헤드라인 {len(heads)}건 <span class="tri">▾</span>
         </summary>
       </details>
+      {f'<a href="{_esc(permalink)}" class="shrink-0 inline-flex items-center gap-1 rounded-lg border border-stone-200 dark:border-neutral-600 px-3 py-1.5 text-xs text-neutral-500 dark:text-neutral-400 hover:text-blue-600 hover:border-blue-500" title="이 이슈의 영구 페이지 열기">🔗 이슈 페이지</a>' if permalink else ""}
       <button type="button" class="share-btn shrink-0 ml-auto rounded-lg border border-stone-200 dark:border-neutral-600 px-3 py-1.5 text-xs text-neutral-500 dark:text-neutral-400 hover:text-blue-600 hover:border-blue-500" data-anchor="{anchor}"{f' data-url="{_esc(_SHARE_BASE)}#{anchor}"' if _SHARE_BASE else ""} data-title="{_esc(issue["label"])}" data-text="{_esc(issue["summary"])}" title="이미지 또는 기사 링크로 공유">📤 공유</button>
     </div>
     <div class="headlines-body mt-3" hidden>
@@ -2587,7 +2588,10 @@ def build(
     nudge_done = False
     cards = []
     for i, issue in enumerate(issues):
-        card = _render_issue(issue, i, opinions=True)
+        card = _render_issue(
+            issue, i, opinions=True,
+            permalink=(f"issue/{_issue_id(issue)}/" if issue.get("headlines") else ""),
+        )
         if i >= config.INITIAL_CARDS:
             # 무한 스크롤: 최초 12개 이후는 숨겨 두고 스크롤 시 12개씩 공개
             card = card.replace('<article id=', '<article data-lazy="1" id=', 1).replace(
@@ -2718,7 +2722,10 @@ def build(
     build_newsletter_page(briefing, out_dir, now, archive_stamps[0] if archive_stamps else None)
     build_blindspot_page(briefing, out_dir, generated_at, updated, stamp, snapshots or [], now)
     build_frame_page(briefing, out_dir, generated_at, updated, stamp, snapshots or [], now)
-    build_seo_files(briefing, out_dir, punycode_domain, now, archive_stamps or [])
+    # 이슈별 영구 URL(/issue/<id>/): 현재 브리핑 + 보관 스냅샷의 이슈를 스토리 단위로 합쳐 생성.
+    # 색인 대상 고유 페이지 코퍼스를 만들어 "시간별 변동 4개 페이지" 구조를 보완한다.
+    issue_ids = build_issue_pages(_dedupe_issues(briefing, snapshots or []), out_dir, now)
+    build_seo_files(briefing, out_dir, punycode_domain, now, archive_stamps or [], issue_ids)
     return out_dir / "index.html"
 
 
@@ -3462,12 +3469,121 @@ def build_archive_pages(
     set_share_base(prev_share)
 
 
+# ── 이슈별 영구 URL: /issue/<id>/ ───────────────────────────────────────
+_ISSUE_PAGES_MAX = 500  # 빌드 용량·과다 페이지(스케일드 콘텐츠 오인) 방지 상한
+
+
+def _issue_id(issue: dict) -> str:
+    """이슈 영구 URL용 안정 ID — 최초 기사 링크(headlines[0])의 해시.
+
+    headlines는 시간 오름차순이라 [0]은 최초 기사로 고정된다. 스토리가 커져
+    매체 수가 늘어도 링크는 그대로이므로 URL이 바뀌지 않는다(진짜 영구 링크).
+    """
+    import hashlib
+
+    heads = issue.get("headlines") or []
+    anchor = (heads[0].get("link") if heads else "") or issue.get("label", "")
+    return hashlib.md5(anchor.encode("utf-8")).hexdigest()[:12]
+
+
+def _dedupe_issues(
+    briefing: dict, snapshots: list[tuple[str, dict]]
+) -> dict[str, dict]:
+    """현재 브리핑 + 보관 스냅샷의 모든 이슈를 영구 ID로 합친다.
+
+    같은 스토리(최초 기사 링크 동일)는 헤드라인이 가장 많은 = 가장 완성된
+    판본을 채택한다. 링크가 없는 이슈는 영구 페이지를 만들지 않는다.
+    """
+    best: dict[str, dict] = {}
+    for brief in [briefing] + [b for _, b in snapshots]:
+        for issue in brief.get("issues", []):
+            if not issue.get("headlines"):
+                continue
+            iid = _issue_id(issue)
+            cur = best.get(iid)
+            if cur is None or len(issue.get("headlines", [])) > len(
+                cur.get("headlines", [])
+            ):
+                best[iid] = issue
+    return best
+
+
+def build_issue_pages(
+    issue_map: dict[str, dict], out_dir: Path, now: datetime
+) -> list[str]:
+    """이슈별 영구 URL(/issue/<id>/index.html)을 생성한다. 반환: 생성된 ID 목록(sitemap용).
+
+    각 페이지는 self-canonical·색인 대상이며, 요약·성향 스펙트럼·프레임·이슈 전개
+    타임라인·매체별 헤드라인을 모두 담는다. 스토리별로 서로 다른 고유 페이지라
+    (아카이브 스냅샷 같은 근접 중복이 아님) 색인 대상으로 유지한다.
+    """
+    if not issue_map:
+        return []
+    # 최신순 정렬 후 상한 적용 (오래된 것부터 제외 — 최근 이슈 우선 보존)
+    ordered = sorted(
+        issue_map.items(),
+        key=lambda kv: kv[1].get("latest_ts", ""),
+        reverse=True,
+    )
+    dropped = 0
+    if len(ordered) > _ISSUE_PAGES_MAX:
+        dropped = len(ordered) - _ISSUE_PAGES_MAX
+        ordered = ordered[:_ISSUE_PAGES_MAX]
+
+    prev_share = _SHARE_BASE
+    stamp_footer = f"ⓒ {_esc(config.SITE_TITLE)} ({_esc(config.SITE_DOMAIN)})"
+    issue_dir = out_dir / "issue"
+    for iid, issue in ordered:
+        set_share_base(f"https://{config.SITE_DOMAIN}/issue/{iid}/")
+        card = _render_issue(issue, 0)
+        label = issue.get("label", "")
+        summary = issue.get("summary", "")
+        cat = issue.get("category", "")
+        cat_color = CATEGORY_COLORS.get(cat, "#2563eb")
+        main_html = f"""<div class="max-w-2xl mx-auto py-6 flex flex-col gap-4">
+  <nav class="text-xs text-neutral-500 dark:text-neutral-400"><a class="text-blue-600 dark:text-blue-400 hover:underline" href="../../">← 최신 브리핑</a></nav>
+  <div>
+    <p class="text-xs font-semibold" style="color:{cat_color}">{_esc(cat)}</p>
+    <h1 class="text-2xl font-extrabold tracking-tight mt-1 break-keep [text-wrap:balance]">{_esc(label)}</h1>
+  </div>
+  {card}
+  <p class="text-xs text-neutral-400 leading-relaxed">이 페이지는 여러 언론사가 공개한 헤드라인을 교차 확인해 자동 구성한 이슈 요약입니다. 요약문은 헤드라인 정보를 근거로 AI가 새로 작성했으며, 기사 본문의 저작권은 각 언론사에 있습니다. 자세한 내용은 각 원문 링크에서 확인해 주세요.</p>
+</div>"""
+        page = _page(
+            title=f"{label} — {config.SITE_TITLE}",
+            canonical=f"issue/{iid}/",
+            description=(summary[:155] or config.SITE_DESCRIPTION),
+            active="news",
+            generated_at=issue.get("latest_ts", ""),
+            feed="",
+            updated_label="이슈 아카이브",
+            head_extra="",
+            tabs_html="",
+            after_header="",
+            main_html=main_html,
+            footer_notes=[DISCLAIMER],
+            site_stamp=stamp_footer,
+            asset_prefix="../../",
+            og_type="article",
+            og_image=f"https://{config.SITE_DOMAIN}/og.png?v=4",
+        )
+        d = issue_dir / iid
+        d.mkdir(parents=True, exist_ok=True)
+        (d / "index.html").write_text(page, encoding="utf-8")
+    set_share_base(prev_share)
+    if dropped:
+        print(f"[이슈 페이지] 상한 {_ISSUE_PAGES_MAX} 적용 — 오래된 {dropped}개 제외")
+    print(f"이슈 영구 페이지 {len(ordered)}개 렌더링 (/issue/<id>/)")
+    return [iid for iid, _ in ordered]
+
+
 # ── SEO: sitemap.xml / rss.xml / robots.txt 자동 생성 ───────────────────
 
 
 def build_seo_files(
     briefing: dict, out_dir: Path, domain: str, now: datetime,
     archive_stamps: list[str] | None = None,
+    issue_ids: list[str] | None = None,
 ) -> None:
     from email.utils import format_datetime
     import hashlib
@@ -3493,6 +3609,8 @@ def build_seo_files(
     ]
     # 개별 스냅샷(archive/<stamp>/)은 noindex 근접 중복본이므로 sitemap에 넣지 않는다.
     # (archive/ 목록 페이지만 색인 대상으로 유지 → 중복 URL·doorway 신호 제거)
+    # 이슈 영구 페이지(/issue/<id>/)는 스토리별 고유 색인 페이지 → sitemap에 포함.
+    pages += [(f"issue/{iid}/", "0.6", "monthly", lastmod) for iid in (issue_ids or [])]
 
     # Task 6: category RSS feeds
     items_by_cat = {}
