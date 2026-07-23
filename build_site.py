@@ -2268,7 +2268,7 @@ def _render_blindspot_nudge(blindspot: dict | None) -> str:
     label = entry.get("label", "")
     if not label or n < 2:
         return ""
-    return f"""<div class="col-span-full">
+    return f"""<div class="col-span-full" data-cat="전체">
   <style>.bs-nudge input{{position:absolute;width:1px;height:1px;opacity:0}}.bs-nudge input:checked~.bs-reveal{{filter:none;pointer-events:auto}}.bs-nudge input:checked~.bs-cta{{display:none}}.bs-nudge input:focus-visible~.bs-cta{{outline:2px solid #d97706;outline-offset:2px}}.bs-reveal{{filter:blur(7px);pointer-events:none;transition:filter .35s;user-select:none}}</style>
   <div class="bs-nudge rounded-xl border border-amber-300 dark:border-amber-500/40 bg-amber-50/70 dark:bg-amber-500/10 p-4">
     <input type="checkbox" id="bs-nudge" class="peer">
