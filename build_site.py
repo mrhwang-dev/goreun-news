@@ -2295,6 +2295,7 @@ def _render_issue(issue: dict, index: int, opinions: bool = False) -> str:
     <span class="flex items-center gap-2 flex-wrap">
       <span class="font-semibold rounded-full px-2.5 py-0.5" style="color:{color};background:{color}1f">{_esc(issue["category"])}</span>
       {f'<span class="hero-badge hidden items-center font-bold rounded-full px-2.5 py-0.5 bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400">📢 {outlet_count}개 매체 집중 보도</span>' if outlet_count >= 2 else ""}
+      {f'<span class="inline-flex items-center font-bold rounded-full px-2.5 py-0.5 bg-orange-100 dark:bg-orange-500/20 text-orange-700 dark:text-orange-300" title="네이버 검색량이 최근 상승 중인 이슈입니다">📈 검색 급상승</span>' if issue.get("search_rising") else ""}
     </span>
     <span class="flex items-center gap-2">
       <span class="text-neutral-400">{outlet_count}개 매체</span>

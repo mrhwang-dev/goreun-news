@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import urllib.request
 from datetime import datetime, timedelta, timezone
 
@@ -30,6 +31,51 @@ def _rising(series: list[dict]) -> tuple[bool, float]:
     if earlier <= 0:
         return recent > 0, recent
     return recent >= earlier * 1.3, recent - earlier
+
+
+# 이슈 제목에서 검색어로 부적합한 일반 명사/서술어(고유성 낮음)를 제외.
+_TREND_STOP = {
+    "관련", "논란", "발표", "결정", "추진", "확대", "대책", "예시", "공개", "계획",
+    "의혹", "방침", "조치", "입장", "우려", "전망", "가능성", "여부", "이유", "상황",
+    "문제", "영향", "반응", "촉구", "요구", "합의", "협상", "경우", "이후", "이번",
+    "오늘", "내일", "정부", "국회", "여야", "검토", "지적", "비판", "강조", "언급",
+}
+
+
+def trend_keyword(label: str) -> str:
+    """이슈 제목(명사형)에서 검색어로 쓸 핵심 키워드 1개를 추출.
+
+    괄호·기호를 제거하고 2자 이상 토큰 중 불용어를 걸러, 가장 긴(대개 고유명사·핵심어)
+    토큰을 고른다. 마땅한 후보가 없으면 원 제목을 그대로 쓴다.
+    """
+    clean = re.sub(r"[()\[\]{}·…,.\"'’“”\-—~!?%:/]", " ", label)
+    toks = [t for t in clean.split() if len(t) >= 2 and t not in _TREND_STOP]
+    if not toks:
+        return label.strip()
+    toks.sort(key=lambda t: (-len(t), label.find(t)))
+    return toks[0]
+
+
+def enrich_issues(issues: list[dict], top_n: int = 15) -> int:
+    """상위 이슈에 검색어 트렌드(상승 여부)를 in-place 로 부착. 반환: 상승 이슈 수.
+
+    각 이슈의 핵심 키워드를 뽑아 데이터랩에 질의하고, 검색량이 최근 상승 중이면
+    issue['search_rising']=True, issue['search_keyword']=키워드 를 설정한다.
+    자격증명 없음/조회 실패 시 아무것도 하지 않는다(무중단).
+    """
+    top = [iss for iss in issues[:top_n] if iss.get("label")]
+    kw_by_issue = [(iss, trend_keyword(iss["label"])) for iss in top]
+    trends = fetch_trends([kw for _, kw in kw_by_issue])
+    if not trends:
+        return 0
+    n = 0
+    for iss, kw in kw_by_issue:
+        info = trends.get(kw)
+        if info and info.get("rising"):
+            iss["search_rising"] = True
+            iss["search_keyword"] = kw
+            n += 1
+    return n
 
 
 def fetch_trends(keywords: list[str]) -> dict[str, dict]:

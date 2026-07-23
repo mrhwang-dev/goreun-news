@@ -336,6 +336,15 @@ def build_briefing(bias_model: dict | None = None) -> dict:
 
     breaking = detect_breaking(items)
 
+    # 네이버 데이터랩: 상위 이슈의 핵심 키워드 검색량이 상승 중이면 '검색 급상승' 표시.
+    if config.ENABLE_DATALAB:
+        try:
+            import fetch_datalab
+            n_rising = fetch_datalab.enrich_issues(selected)
+            print(f"[데이터랩] 검색 급상승 이슈 {n_rising}건 표시")
+        except Exception as e:
+            print(f"[경고] 데이터랩 트렌드 단계 실패 — 건너뜀: {e}")
+
     return {
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "heat": {c: round(h, 2) for c, h in sorted(heat.items(), key=lambda x: -x[1])},
