@@ -613,6 +613,7 @@ function openLogin(cb) {
 }
 function startGoogleLogin() {
   if (!sb) return;
+  try { sessionStorage.setItem("goreun_welcome", "1"); } catch (e) {}  // 실제 로그인 행동 표시(페이지 이동 시 세션복원과 구분)
   sb.auth.signInWithOAuth({ provider: "google", options: { redirectTo: location.origin + location.pathname } });
 }
 function closeLogin() {
@@ -676,7 +677,12 @@ if (sb) {
     if (typeof renderScrapGate === "function") renderScrapGate();
     if (event === "SIGNED_IN" && currentUser && currentUser.id !== prevId) {
       closeLogin();
-      toast(currentUser.name + " 님, 환영합니다");
+      var justLoggedIn = false;
+      try { justLoggedIn = !!sessionStorage.getItem("goreun_welcome"); } catch (e) {}
+      if (justLoggedIn) {  // 세션 복원(페이지 이동)이 아니라 실제 로그인일 때만 환영
+        try { sessionStorage.removeItem("goreun_welcome"); } catch (e) {}
+        toast(currentUser.name + " 님, 환영합니다");
+      }
       if (typeof syncOnLogin === "function") syncOnLogin();
       if (loginCallback) { var cb = loginCallback; loginCallback = null; try { cb(); } catch (e) {} }
     }
