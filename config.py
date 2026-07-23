@@ -174,6 +174,15 @@ ENABLE_CLAUDE = os.environ.get("ENABLE_CLAUDE", "").strip().lower() in ("1", "tr
 #      Gemini 유료 티어나 Claude 크레딧이 있을 때 ENABLE_LLM_LABELING=1 로 켠다.
 ENABLE_LLM_LABELING = os.environ.get("ENABLE_LLM_LABELING", "").strip().lower() in ("1", "true", "yes", "on")
 
+# 네이버 CLOVA Studio(HyperCLOVA X) 라벨링 모델. CLOVA_API_KEY 시크릿이 있으면 활성.
+CLOVA_MODEL = os.environ.get("CLOVA_MODEL") or "HCX-007"
+
+# 라벨링/요약 LLM 시도 우선순위 (앞에서부터, 키/활성인 엔진만). 기본 CLOVA→Gemini→Claude.
+# 환경변수 LLM_PRIORITY로 재정의(예: "gemini,clova"). 전부 실패하면 무-API 알고리즘 폴백.
+LLM_PRIORITY = [
+    e.strip() for e in (os.environ.get("LLM_PRIORITY") or "clova,gemini,claude").split(",") if e.strip()
+]
+
 # Claude 정밀 요약(편향 교차 검증 + 3문장 리포트)을 적용할 상위 이슈 수.
 # 나머지 이슈는 Gemini 1차 분류의 라벨·요약을 그대로 쓴다.
 REFINE_TOP_ISSUES = 12

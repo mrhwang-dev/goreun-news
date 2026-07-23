@@ -128,31 +128,103 @@ def gemini_json(system: str, user: str, schema: dict) -> dict:
     return _with_backoff("Gemini", call)
 
 
+# ── CLOVA Studio (HyperCLOVA X) ──────────────────────────────────────────
+
+
+def clova_json(system: str, user: str, schema: dict) -> dict:
+    """네이버 CLOVA Studio(HyperCLOVA X) 비스트리밍 호출로 JSON을 받는다.
+
+    구조화 출력(responseFormat) 대신 프롬프트에 스키마를 명시하고 응답 content를
+    파싱해, 모델·추론모드와 무관하게 동작한다(Gemini/Claude 경로와 동일 패턴).
+    """
+    import urllib.request
+    import uuid
+
+    api_key = os.environ.get("CLOVA_API_KEY")
+    if not api_key:
+        raise RuntimeError("CLOVA_API_KEY 미설정")
+    auth = api_key if api_key.lower().startswith("bearer ") else f"Bearer {api_key}"
+
+    prompt = (
+        f"{user}\n\n다음 JSON 스키마를 정확히 따르는 JSON 객체만 출력하라:\n"
+        + json.dumps(schema, ensure_ascii=False)
+    )
+    payload = {
+        "messages": [
+            {"role": "system", "content": system},
+            {"role": "user", "content": prompt},
+        ],
+        "topP": 0.8,
+        "temperature": 0.3,
+        "maxCompletionTokens": 16384,
+        "repetitionPenalty": 1.1,
+    }
+    # HCX-007은 추론 모델 — 라벨링엔 최소 추론으로 비용·지연을 줄인다.
+    if config.CLOVA_MODEL.upper().startswith("HCX-007"):
+        payload["thinking"] = {"effort": "low"}
+    body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    url = f"https://clovastudio.stream.ntruss.com/v3/chat-completions/{config.CLOVA_MODEL}"
+
+    def call() -> dict:
+        req = urllib.request.Request(
+            url,
+            data=body,
+            method="POST",
+            headers={
+                "Authorization": auth,
+                "X-NCP-CLOVASTUDIO-REQUEST-ID": uuid.uuid4().hex,
+                "Content-Type": "application/json; charset=utf-8",
+                "Accept": "application/json",  # 비스트리밍 JSON 응답
+            },
+        )
+        with urllib.request.urlopen(req, timeout=120) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+        status = data.get("status") or {}
+        code = str(status.get("code") or "")
+        if code and code != "20000":
+            raise RuntimeError(f"CLOVA 오류 {code}: {status.get('message')}")
+        content = data["result"]["message"]["content"]
+        return _extract_json(content)
+
+    return _with_backoff("CLOVA", call)
+
+
 # ── 폴백 오케스트레이션 ─────────────────────────────────────────────────
+
+_ENGINES = {"claude": claude_json, "gemini": gemini_json, "clova": clova_json}
+
+
+def _available_engines() -> list[str]:
+    """키·활성화 여부로 실제 사용 가능한 엔진만 config.LLM_PRIORITY 순으로 반환."""
+    avail = {
+        "clova": bool(os.environ.get("CLOVA_API_KEY")),
+        "gemini": bool(os.environ.get("GEMINI_API_KEY")),
+        "claude": config.ENABLE_CLAUDE,
+    }
+    ordered = [e for e in config.LLM_PRIORITY if avail.get(e)]
+    ordered += [e for e in avail if avail[e] and e not in ordered]  # 목록 밖 엔진도 뒤에
+    return ordered
 
 
 def call_with_fallback(
     primary: str, system: str, user: str, schema: dict
 ) -> tuple[dict, str]:
-    """primary('claude'|'gemini') 실패 시 반대 모델로 무중단 우회.
+    """사용 가능한 LLM을 config.LLM_PRIORITY 순으로 시도한다(무중단 폴백).
 
+    primary 인자는 하위호환용이며, 실제 순서는 LLM_PRIORITY + 키 보유 여부로 정한다.
     반환: (결과 JSON, 실제 사용된 엔진 이름)
     """
-    engines = {"claude": claude_json, "gemini": gemini_json}
-    # Claude 비활성(크레딧 미보유 등) 시 전 구간 Gemini 단독으로 우회한다.
-    # primary가 'claude'라도 Gemini로 재지정되며, Claude 호출은 아예 시도하지 않는다.
-    if not config.ENABLE_CLAUDE:
-        engines.pop("claude", None)
-        primary = "gemini"
-    order = [primary] + [e for e in engines if e != primary]
+    order = _available_engines()
+    if not order:
+        raise RuntimeError("사용 가능한 LLM 엔진이 없습니다 (CLOVA/Gemini/Claude 키·활성 없음).")
     last_error: Exception | None = None
     for engine in order:
         try:
-            result = engines[engine](system, user, schema)
-            if engine != primary:
-                print(f"[폴백] {primary} → {engine} 우회 성공")
+            result = _ENGINES[engine](system, user, schema)
+            if engine != order[0]:
+                print(f"[폴백] {order[0]} → {engine} 우회 성공")
             return result, engine
         except Exception as e:
-            print(f"[{engine}] 최종 실패: {e}")
+            print(f"[{engine}] 실패: {e}")
             last_error = e
     raise last_error  # type: ignore[misc]
