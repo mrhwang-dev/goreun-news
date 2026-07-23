@@ -21,6 +21,7 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import config
+import spell_check_pipeline
 from og_image import CATEGORY_COLORS, build_icon, build_og
 
 # ── 공통 조각 ───────────────────────────────────────────────────────────
@@ -2475,6 +2476,9 @@ def build(
     now = datetime.now(ZoneInfo("Asia/Seoul"))
     generated_at = briefing.get("generated_at", now.isoformat())
     out_dir.mkdir(parents=True, exist_ok=True)
+
+    # 렌더 전에 AI 요약문 맞춤법·띄어쓰기 정제 (ENABLE_SPELLCHECK=off 시 무동작·무해).
+    spell_check_pipeline.correct_briefing(briefing)
 
     punycode_domain = config.SITE_DOMAIN.encode("idna").decode()
     # ?v= 는 디자인 변경 시 카카오/OG 캐시를 강제로 새로 읽게 하는 버전 태그

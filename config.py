@@ -221,3 +221,13 @@ SITE_DOMAIN = "goreunnews.cloud"
 # Sentry 버그 제보 위젯 — 로더 스크립트 공개 키 (cwworks/goreun-news 프로젝트).
 # 브라우저용 공개 DSN 키라 저장소에 포함해도 안전하다. 비우면 위젯 미노출.
 SENTRY_LOADER_KEY = os.environ.get("SENTRY_LOADER_KEY", "d80edcd8a1167eecfe0d7ef5bdb37f7c")
+
+# ── 맞춤법·띄어쓰기 하이브리드 교정 파이프라인 (spell_check_pipeline.py) ──
+# 기본 비활성. 켜려면 ENABLE_SPELLCHECK=1. 1차(규칙/경량) + 2차(LLM/KoBART) + 길이차 방어.
+ENABLE_SPELLCHECK = os.environ.get("ENABLE_SPELLCHECK", "").strip().lower() in ("1", "true", "yes", "on")
+# 1차 백엔드: auto(가능한 것 자동) | pykospacing | hanspell | builtin
+SPELLCHECK_RULE_BACKEND = os.environ.get("SPELLCHECK_RULE_BACKEND", "auto")
+# 2차(문맥) 백엔드: llm(기존 llm.py 재사용) | kobart(로컬 경량) | none(2차 끔)
+SPELLCHECK_MODEL_BACKEND = os.environ.get("SPELLCHECK_MODEL_BACKEND", "llm")
+# 과교정·할루시네이션 방어: 교정 전후 글자 수 변화 허용 비율(초과 시 2차 폐기)
+SPELLCHECK_MAX_DELTA = float(os.environ.get("SPELLCHECK_MAX_DELTA", "0.15"))
