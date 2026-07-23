@@ -210,25 +210,6 @@ def build_briefing(bias_model: dict | None = None) -> dict:
             reps = [c[0]["title"] for c in top]
             emb_map = fetch_embeddings(reps)
             embs = [emb_map.get(r) for r in reps]
-            # 임계값 튜닝 진단: 상위 코사인 쌍과 구간별 개수 (같은 사건 vs 다른 사건 경계 파악)
-            from cluster import _cosine
-
-            pairs = []
-            for a in range(len(embs)):
-                if embs[a] is None:
-                    continue
-                for b in range(a + 1, len(embs)):
-                    if embs[b] is not None:
-                        c = _cosine(embs[a], embs[b])
-                        if c >= 0.55:
-                            pairs.append((c, reps[a], reps[b]))
-            pairs.sort(reverse=True)
-            for c, x, y in pairs[:8]:
-                print(f"[임베딩 진단] {c:.3f} | {x[:24]} ↔ {y[:24]}")
-            print(
-                "[임베딩 진단] "
-                + " ".join(f"≥{t}:{sum(1 for c, _, _ in pairs if c >= t)}" for t in (0.6, 0.7, 0.75, 0.8))
-            )
             merged = merge_by_embedding(top, embs, config.EMBED_MERGE_THRESHOLD)
             clusters = merged + clusters[config.EMBED_MERGE_TOP :]
             print(f"[임베딩 병합] 상위 {len(top)}개 → {len(merged)}개 (병합 {len(top) - len(merged)}건)")

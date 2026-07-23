@@ -1822,6 +1822,23 @@ def _render_issue(issue: dict, index: int) -> str:
   {f'<p class="mt-1.5 text-xs text-neutral-500 dark:text-neutral-400">프레임 단어: {chips}</p>' if chips else ""}
 </div>"""
 
+    # 30초 건설적 브리핑: 진보 우려 / 보수 주장 / 교집합 — 진영 대립이 뚜렷한 이슈만
+    constructive = issue.get("constructive") or {}
+    constructive_html = ""
+    if constructive.get("progressive_concern") and constructive.get("conservative_claim"):
+        cg = constructive.get("common_ground")
+        constructive_html = (
+            '<details class="constructive mb-3.5 rounded-lg border border-blue-200 dark:border-blue-500/30 bg-blue-50/40 dark:bg-blue-500/5">'
+            '<summary class="list-none [&::-webkit-details-marker]:hidden cursor-pointer select-none px-3 py-2 text-xs font-bold text-blue-700 dark:text-blue-300 flex items-center gap-1.5">'
+            '🕒 30초 브리핑 — 쟁점 한눈에 <span class="text-neutral-400 font-normal">(참고용 AI 분석)</span>'
+            '<span class="tri text-blue-400 ml-auto">▾</span></summary>'
+            '<div class="px-3 pb-3 flex flex-col gap-2 text-xs leading-relaxed break-keep">'
+            f'<p><b class="text-blue-600 dark:text-blue-400">진보 우려</b> {_esc(constructive["progressive_concern"])}</p>'
+            f'<p><b class="text-red-600 dark:text-red-400">보수 주장</b> {_esc(constructive["conservative_claim"])}</p>'
+            + (f'<p><b class="text-neutral-500 dark:text-neutral-400">교집합·검증필요</b> {_esc(cg)}</p>' if cg else "")
+            + "</div></details>"
+        )
+
     # 수직 타임라인: 송고 시간순(1보 → 최신)으로 사건의 흐름을 보여준다
     rows = "".join(
         f'<li class="relative" data-b="{_esc(h.get("bias", "unknown"))}" data-t="{_esc(h.get("time", ""))}">'
@@ -1863,6 +1880,7 @@ def _render_issue(issue: dict, index: int) -> str:
     <span class="fade"></span>
   </div>
   <div class="bias-inline hidden mb-3.5">{_render_bias_bar(issue.get("bias"))}</div>
+  {constructive_html}
   <div class="card-foot border-t border-stone-200 dark:border-neutral-700 pt-3">
     <div class="flex items-center gap-2">
       <details class="headlines-toggle">

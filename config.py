@@ -196,7 +196,7 @@ ENABLE_DATALAB = os.environ.get("ENABLE_DATALAB", "").strip().lower() in ("1", "
 # 사건인 클러스터를 합친다. CLOVA_API_KEY 필요.
 ENABLE_EMBEDDING = os.environ.get("ENABLE_EMBEDDING", "").strip().lower() in ("1", "true", "yes", "on")
 EMBED_MERGE_TOP = 120         # 임베딩 대상 상위 클러스터 수 (대표 제목만 임베딩)
-EMBED_MERGE_THRESHOLD = 0.82  # 코사인 유사도 임계값 (라이브 관측으로 튜닝)
+EMBED_MERGE_THRESHOLD = 0.67  # 코사인 임계값 (관측 튜닝: 같은사건 0.68+, 같은장르 오병합 0.65 회피)
 
 # Claude 정밀 요약(편향 교차 검증 + 3문장 리포트)을 적용할 상위 이슈 수.
 # 나머지 이슈는 Gemini 1차 분류의 라벨·요약을 그대로 쓴다.
