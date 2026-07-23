@@ -89,15 +89,18 @@
         "words": [
           {
             "word": "동결",
-            "side": "common"
+            "side": "common",
+            "sentiment": "neutral"
           },
           {
             "word": "가계부채 부담",
-            "side": "conservative"
+            "side": "conservative",
+            "sentiment": "negative"
           },
           {
             "word": "인하 시사",
-            "side": "moderate"
+            "side": "moderate",
+            "sentiment": "neutral"
           }
         ]
       },

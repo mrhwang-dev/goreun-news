@@ -1439,11 +1439,39 @@ def _headline_anchor(h: dict, title_html: str) -> str:
     )
 
 
-def _frame_chips(words: list[dict]) -> str:
-    return " · ".join(
-        f'<span style="color:{FRAME_COLORS.get(w.get("side"), "#b45309")}" class="font-semibold">{_esc(w.get("word", ""))}</span>'
-        for w in words
-        if w.get("word")
+# 감성 톤 색: 긍정=파랑, 부정=빨강, 중립=회색 (프레임 네트워크 버블)
+_SENT_CLS = {
+    "positive": "bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-300",
+    "negative": "bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-300",
+    "neutral": "bg-stone-100 text-neutral-600 dark:bg-neutral-700 dark:text-neutral-300",
+}
+
+
+def _frame_network(words: list[dict]) -> str:
+    """프레임 단어를 성향별(진보·공통·보수) 좌우 버블로 배치하고 감성 톤으로 색칠."""
+    cols: dict[str, list[str]] = {"progressive": [], "common": [], "conservative": []}
+    for w in words:
+        side = w.get("side")
+        side = "common" if side == "moderate" else side
+        if side in cols and w.get("word"):
+            cls = _SENT_CLS.get(w.get("sentiment") or "neutral", _SENT_CLS["neutral"])
+            cols[side].append(
+                f'<span class="inline-block rounded-full px-2 py-0.5 text-[11px] font-medium {cls}">{_esc(w["word"])}</span>'
+            )
+    if not any(cols.values()):
+        return ""
+
+    def _col(title: str, side: str, tcls: str) -> str:
+        chips = " ".join(cols[side]) or '<span class="text-[10px] text-neutral-300 dark:text-neutral-600">—</span>'
+        return f'<div><p class="text-[10px] font-bold mb-1 {tcls}">{title}</p><div class="flex flex-wrap gap-1">{chips}</div></div>'
+
+    return (
+        '<div class="grid grid-cols-3 gap-2 mt-2">'
+        + _col("진보", "progressive", "text-blue-500")
+        + _col("공통", "common", "text-neutral-400")
+        + _col("보수", "conservative", "text-red-500")
+        + "</div>"
+        + '<p class="text-[10px] text-neutral-400 mt-1.5">톤 색: <span class="text-blue-600 dark:text-blue-400">긍정</span> · <span class="text-red-600 dark:text-red-400">부정</span> · 중립</p>'
     )
 
 
@@ -1989,11 +2017,10 @@ def _render_issue(issue: dict, index: int, opinions: bool = False) -> str:
 
     framing_html = ""
     if framing.get("note"):
-        chips = _frame_chips(frame_words)
         framing_html = f"""<div class="rounded-lg border border-stone-200 dark:border-neutral-700 bg-stone-50 dark:bg-neutral-900/60 p-3 mb-3">
   <p class="text-[11px] font-bold mb-1">🔍 프레임 체크 — 같은 사건, 다른 단어 <span class="font-normal text-neutral-400">(참고용 AI 분석)</span></p>
   <p class="text-xs text-neutral-600 dark:text-neutral-300">{_esc(framing["note"])}</p>
-  {f'<p class="mt-1.5 text-xs text-neutral-500 dark:text-neutral-400">프레임 단어: {chips}</p>' if chips else ""}
+  {_frame_network(frame_words)}
 </div>"""
 
     # 30초 건설적 브리핑: 진보 우려 / 보수 주장 / 교집합 — 진영 대립이 뚜렷한 이슈만
@@ -2601,7 +2628,6 @@ def build_frame_page(
             if not framing.get("note"):
                 continue
             words = framing.get("words") or []
-            chips = _frame_chips(words)
             # 표시 기준(최초 목격 일시)과 정렬 기준을 일치시킨다
             ordered_heads = sorted(
                 issue.get("headlines", []),
@@ -2628,7 +2654,7 @@ def build_frame_page(
   <h3 class="font-bold text-[15px] leading-snug mb-2">{title_html}</h3>
   <div class="rounded-lg border border-stone-200 dark:border-neutral-700 bg-stone-50 dark:bg-neutral-900/60 p-3 mb-3">
     <p class="text-xs text-neutral-600 dark:text-neutral-300">{_esc(framing["note"])}</p>
-    {f'<p class="mt-1.5 text-xs text-neutral-500 dark:text-neutral-400">프레임 단어: {chips}</p>' if chips else ""}
+    {_frame_network(words)}
   </div>
   <ul class="flex flex-col gap-1.5">{heads}</ul>
 </article>""")
