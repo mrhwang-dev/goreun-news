@@ -222,43 +222,56 @@ def label_clusters(clusters: list[list[dict]]) -> dict[int, dict]:
             to_ask.append(ci)
 
     if to_ask:
-        lines = []
-        for idx, ci in enumerate(to_ask):
-            heads = " / ".join(f"({m['outlet']}) {m['title']}" for m in clusters[ci][:8])
-            lines.append(f"[{idx}] {heads}")
-        user = (
-            "다음 헤드라인 클러스터들을 분류하라. "
-            f"분야는 {', '.join(config.ISSUE_CATEGORIES)} 중 하나.\n\n" + "\n".join(lines)
-        )
-        try:
-            data, engine = call_with_fallback("gemini", SYSTEM_TRIAGE, user, TRIAGE_SCHEMA)
-            print(f"[1차 분류] {len(to_ask)}개 클러스터 — {engine} 처리")
-        except Exception as e:
-            print(f"[경고] 1차 분류 전체 실패 — 신규 클러스터 건너뜀: {e}")
-            return results
-
-        entries = data.get("clusters", [])
-        for pos, entry in enumerate(entries):
-            sub_id = entry.get("id")
-            if isinstance(sub_id, int) and 0 <= sub_id < len(to_ask):
-                ci = to_ask[sub_id]
-            elif 0 <= pos < len(to_ask):
-                ci = to_ask[pos]
-            else:
+        # 큰 배치(60개)를 한 요청에 보내면 일부 LLM(특히 추론모델 HCX-007)이
+        # 앞부분 몇 개만 라벨링하고 나머지를 누락한다. 작은 청크로 나눠 각 응답을
+        # 온전하게 받는다(무-API 알고리즘 폴백 비율을 낮춤). Gemini 응답 잘림도 완화.
+        CHUNK = 15
+        labeled = 0
+        engine_used: str | None = None
+        for start in range(0, len(to_ask), CHUNK):
+            chunk = to_ask[start : start + CHUNK]
+            lines = []
+            for local_idx, ci in enumerate(chunk):
+                heads = " / ".join(f"({m['outlet']}) {m['title']}" for m in clusters[ci][:8])
+                lines.append(f"[{local_idx}] {heads}")
+            user = (
+                "다음 헤드라인 클러스터들을 분류하라. "
+                f"분야는 {', '.join(config.ISSUE_CATEGORIES)} 중 하나.\n\n" + "\n".join(lines)
+            )
+            try:
+                data, engine = call_with_fallback("gemini", SYSTEM_TRIAGE, user, TRIAGE_SCHEMA)
+                engine_used = engine
+            except Exception as e:
+                print(f"[경고] 1차 분류 청크({start}~) 실패 — 건너뜀: {e}")
                 continue
 
-            keep = bool(entry.get("keep", True))
-            meta = {
-                "keep": keep,
-                "label": entry.get("label", ""),
-                "summary": entry.get("summary", ""),
-                "category": entry.get("category")
-                if entry.get("category") in config.ISSUE_CATEGORIES
-                else "사회",
-            }
-            cache["clusters"][keys[ci]] = {**meta, "t": time.time()}
-            if keep and meta["label"]:
-                results[ci] = {k: meta[k] for k in ("label", "summary", "category")}
+            for pos, entry in enumerate(data.get("clusters", [])):
+                sub_id = entry.get("id")
+                if isinstance(sub_id, int) and 0 <= sub_id < len(chunk):
+                    ci = chunk[sub_id]
+                elif 0 <= pos < len(chunk):
+                    ci = chunk[pos]
+                else:
+                    continue
+
+                keep = bool(entry.get("keep", True))
+                meta = {
+                    "keep": keep,
+                    "label": entry.get("label", ""),
+                    "summary": entry.get("summary", ""),
+                    "category": entry.get("category")
+                    if entry.get("category") in config.ISSUE_CATEGORIES
+                    else "사회",
+                }
+                cache["clusters"][keys[ci]] = {**meta, "t": time.time()}
+                if keep and meta["label"]:
+                    results[ci] = {k: meta[k] for k in ("label", "summary", "category")}
+                    labeled += 1
+
+        if engine_used:
+            print(f"[1차 분류] {len(to_ask)}개 요청 → {labeled}개 라벨 ({engine_used}, 청크 {CHUNK})")
+        else:
+            print("[경고] 1차 분류 전체 실패 — 알고리즘 폴백")
         _save_cache(cache)
 
     return results

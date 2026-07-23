@@ -183,7 +183,11 @@ def clova_json(system: str, user: str, schema: dict) -> dict:
         code = str(status.get("code") or "")
         if code and code != "20000":
             raise RuntimeError(f"CLOVA 오류 {code}: {status.get('message')}")
-        content = data["result"]["message"]["content"]
+        result = data["result"]
+        content = result["message"]["content"]
+        finish = result.get("finishReason")
+        if finish and finish not in ("stop", "end_turn"):
+            print(f"[CLOVA] finishReason={finish}, content {len(content)}자 — 응답 잘림 의심")
         return _extract_json(content)
 
     return _with_backoff("CLOVA", call)
