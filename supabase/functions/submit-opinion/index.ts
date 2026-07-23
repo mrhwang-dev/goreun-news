@@ -16,8 +16,45 @@ const CORS: Record<string, string> = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-// 스타터 금칙어(어근). 운영 시 확장/사전화 필요.
-const BLOCK = ["씨발", "시발", "ㅅㅂ", "병신", "ㅂㅅ", "새끼", "지랄", "좆", "니미", "썅", "개새"];
+// 1차 금칙어(어근) — 빠른 차단. 문맥 판단은 아래 CLOVA 검열이 담당.
+const BLOCK = [
+  "씨발", "시발", "씨발", "ㅅㅂ", "병신", "ㅂㅅ", "새끼", "쌔끼", "지랄", "ㅈㄹ",
+  "좆", "좇", "니미", "느금", "썅", "개새", "개소리", "꺼져", "미친놈", "미친년",
+  "죽어", "뒤져", "닥쳐", "창녀", "걸레", "빨갱이", "틀딱", "한남", "된장녀", "김치녀",
+];
+
+// CLOVA 문맥 검열 — 욕설/혐오/차별/폭력/명예훼손이면 차단. 정치적 의견 자체는 허용.
+// CLOVA_API_KEY(Supabase 시크릿) 미설정 시 건너뛴다(키워드 검열만).
+async function clovaBlocked(text: string): Promise<boolean> {
+  const key = Deno.env.get("CLOVA_API_KEY");
+  if (!key) return false;
+  const auth = key.toLowerCase().startsWith("bearer ") ? key : "Bearer " + key;
+  try {
+    const r = await fetch("https://clovastudio.stream.ntruss.com/v3/chat-completions/HCX-007", {
+      method: "POST",
+      headers: {
+        Authorization: auth,
+        "X-NCP-CLOVASTUDIO-REQUEST-ID": crypto.randomUUID(),
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify({
+        messages: [
+          { role: "system", content: "너는 뉴스 댓글 검열기다. 입력이 욕설·혐오·차별·성적표현·폭력선동·명예훼손을 담으면 정확히 'block', 아니면 'ok'만 출력하라. 정파적 정치 의견 자체는 허용한다." },
+          { role: "user", content: text },
+        ],
+        maxCompletionTokens: 8,
+        temperature: 0,
+        thinking: { effort: "low" },
+      }),
+    });
+    if (!r.ok) return false; // CLOVA 오류 시 통과(1차 키워드는 이미 통과)
+    const d = await r.json();
+    return String(d?.result?.message?.content || "").toLowerCase().includes("block");
+  } catch {
+    return false;
+  }
+}
 
 function intensity(t: string): number {
   let s = 0.35 + Math.min((t.match(/[!?]/g) || []).length * 0.12, 0.35);
@@ -55,6 +92,9 @@ Deno.serve(async (req) => {
   if (BLOCK.some((w) => lower.includes(w))) return json({ error: "부적절한 표현이 포함되어 있어요." }, 422);
   if (/(https?:\/\/|www\.|\.com|카톡|텔레그램|010[-\s]?\d{3,4})/i.test(text)) {
     return json({ error: "링크·연락처는 넣을 수 없어요." }, 422);
+  }
+  if (await clovaBlocked(text)) {
+    return json({ error: "부적절한 내용으로 판단돼 등록되지 않았어요." }, 422);
   }
 
   const x = Math.max(-1, Math.min(1, Number(payload.x) || 0));
