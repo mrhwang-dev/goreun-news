@@ -723,7 +723,7 @@ var obModal = document.getElementById("onboard-modal");
 function obSeen() { try { return localStorage.getItem("goreun_onboarded"); } catch (e) { return "1"; } }
 if (obModal && !obSeen()) {
   var OB_STEPS = [
-    { e: "⚖️", t: "고른뉴스에 오신 것을 환영합니다", d: "__FEED_COUNT__개 언론사의 헤드라인을 교차 확인해, 감정적 표현을 걷어낸 중립 브리핑을 매시간 자동으로 만듭니다." },
+    { e: "⚖️", t: "고른뉴스에 오신 것을 환영합니다", d: "__FEED_COUNT__개 언론사의 헤드라인을 교차 확인해, 감정적 표현을 걷어낸 중립 브리핑을 30분마다 자동으로 만듭니다." },
     { e: "🎨", t: "성향 스펙트럼", d: "각 이슈를 어떤 성향의 매체들이 보도했는지 진보-중도-보수 분포 바로 보여줍니다. 카드를 펼치면 매체별 원문 제목을 시간순 타임라인으로 비교할 수 있어요." },
     { e: "🕳️", t: "블라인드스팟", d: "한쪽 성향 매체만 보도한 이슈를 따로 모아 보여줍니다. 내 피드에서 놓치기 쉬운 관점을 확인하세요." },
     { e: "🔍", t: "프레임 체크", d: "같은 사건을 두고 매체들이 제목에서 어떤 단어를 골랐는지 AI가 해부합니다. 분포가 아니라 언어에서 프레임을 직접 목격하세요." },
@@ -2513,7 +2513,7 @@ def _render_sidebar(policy: list[dict], blindspot: dict | None = None) -> str:
   {keyword_panel}
   <section class="rounded-xl border border-stone-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 p-5">
     <h2 class="text-sm font-bold mb-0.5">공개 API</h2>
-    <p class="text-xs text-neutral-500 dark:text-neutral-400 mb-2.5">이 페이지의 모든 데이터는 JSON으로도 제공됩니다 (매시간 갱신).</p>
+    <p class="text-xs text-neutral-500 dark:text-neutral-400 mb-2.5">이 페이지의 모든 데이터는 JSON으로도 제공됩니다 (30분마다 갱신).</p>
     <code class="block rounded-lg bg-stone-100 dark:bg-neutral-900 px-2.5 py-2 text-[11px] overflow-x-auto">GET /briefing.json<br>GET /community.json<br>GET /bias-model.json</code>
   </section>
 </aside>"""
@@ -2620,7 +2620,7 @@ def build(
         f"ⓒ {_esc(config.SITE_TITLE)} ({_esc(config.SITE_DOMAIN)}) · "
         f"최종 수정 시간 {now.strftime('%Y-%m-%d %H:%M KST')}"
     )
-    updated = f"{now.strftime('%m월 %d일 %H:%M')} 업데이트 · 매시간 갱신"
+    updated = f"{now.strftime('%m월 %d일 %H:%M')} 업데이트 · 30분마다 갱신"
 
     nl_banner = f"""<div id="nl-banner" style="transform:translateY(150%)" class="fixed bottom-5 left-5 z-40 w-80 max-w-[calc(100vw-2.5rem)] rounded-xl border border-stone-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 shadow-xl p-4 transition-transform duration-500">
   <button type="button" id="nl-banner-close" class="absolute top-2 right-3 text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200" aria-label="닫기">✕</button>
@@ -2650,7 +2650,7 @@ def build(
     page = _page(
         title=f"{config.SITE_TITLE} — {config.SITE_TAGLINE}",
         canonical="/",
-        description=f"{len(config.PRESS_FEEDS)}개 언론사 헤드라인을 교차 확인한 매시간 중립 뉴스 브리핑 — 성향 스펙트럼·블라인드스팟·프레임 체크로 한 사건을 여러 시각에서.",
+        description=f"{len(config.PRESS_FEEDS)}개 언론사 헤드라인을 교차 확인한 30분마다 중립 뉴스 브리핑 — 성향 스펙트럼·블라인드스팟·프레임 체크로 한 사건을 여러 시각에서.",
         active="news",
         banner_html=nl_banner + onboarding,
         generated_at=generated_at,
@@ -3234,13 +3234,13 @@ def _build_doc(out_dir: Path, filename: str, title: str, body: str,
 
 
 ABOUT_BODY = f"""
-<p>고른뉴스는 <b>"골라 담아, 고르게 전합니다"</b>를 원칙으로 하는 AI 중립 뉴스 브리핑입니다. {len(config.PRESS_FEEDS)}개 언론사(일간지·주간지·월간지·지역지·인터넷 언론·외신 한국어판)의 공개 헤드라인을 매시간 수집해, 같은 사건을 다룬 기사들을 알고리즘으로 묶고 AI가 감정적·평가적 표현을 걷어낸 요약을 새로 씁니다.</p>
+<p>고른뉴스는 <b>"골라 담아, 고르게 전합니다"</b>를 원칙으로 하는 AI 중립 뉴스 브리핑입니다. {len(config.PRESS_FEEDS)}개 언론사(일간지·주간지·월간지·지역지·인터넷 언론·외신 한국어판)의 공개 헤드라인을 30분마다 수집해, 같은 사건을 다룬 기사들을 알고리즘으로 묶고 AI가 감정적·평가적 표현을 걷어낸 요약을 새로 씁니다.</p>
 <h2>무엇이 다른가요</h2>
 <ul>
 <li><b>성향 스펙트럼</b> — 이슈별로 진보·중도·보수 매체의 보도 분포를 보여줍니다. 분류 근거가 약한 매체는 '중도'로 뭉개지 않고 '분류 없음'으로 정직하게 표기하며, 관측 데이터가 쌓이면 알고리즘이 추정합니다.</li>
 <li><b>블라인드스팟</b> — 한쪽 성향 매체만 보도한 이슈를 따로 모읍니다.</li>
 <li><b>프레임 체크</b> — 같은 사건의 제목들에서 매체별 단어 선택 차이를 알고리즘+AI로 해부합니다.</li>
-<li><b>아카이브·검색</b> — 매시간 브리핑이 영구 보존되고, 단어·날짜로 검색할 수 있습니다.</li>
+<li><b>아카이브·검색</b> — 30분마다 브리핑이 영구 보존되고, 단어·날짜로 검색할 수 있습니다.</li>
 </ul>
 <h2>계정과 개인화</h2>
 <p>구글 계정으로 로그인하면 스크랩북과 '나의 뉴스 다이어트'(읽은 기사의 성향 기록)가 계정에 저장되어 기기 간에 동기화됩니다. 로그인하지 않아도 대부분의 기능을 그대로 이용할 수 있으며, 이 경우 데이터는 사용하는 기기(브라우저)에만 저장됩니다. 이슈별 댓글은 익명으로 공개됩니다. 자세한 처리는 <a class="text-blue-500" href="privacy.html">개인정보처리방침</a>을 참고하세요.</p>
@@ -3363,7 +3363,7 @@ def build_archive_pages(
 ) -> None:
     """/archive/<stamp>/ 정적 스냅샷 페이지 + 아카이브 목록 페이지.
 
-    매시간 index를 덮어써도 과거 브리핑과 공유 링크(#issue-N)가 살아남는다.
+    30분마다 index를 덮어써도 과거 브리핑과 공유 링크(#issue-N)가 살아남는다.
     """
     prev_share = _SHARE_BASE
     set_share_base(None)  # 아카이브 페이지 자체가 영구 링크
@@ -3388,7 +3388,7 @@ def build_archive_pages(
         page = _page(
             title=f"{stamp} 브리핑 아카이브 — {config.SITE_TITLE}",
             canonical=f"archive/{stamp}/",
-            description=f"{stamp} (KST) 시점의 브리핑 스냅샷 — 매시간 저장된 뉴스 이슈 영구 보존본.",
+            description=f"{stamp} (KST) 시점의 브리핑 스냅샷 — 30분마다 저장된 뉴스 이슈 영구 보존본.",
             active="news",
             generated_at=briefing.get("generated_at", ""),
             feed="",
@@ -3430,7 +3430,7 @@ def build_archive_pages(
     page = _page(
         title=f"브리핑 아카이브 — {config.SITE_TITLE}",
         canonical="archive/",
-        description="매시간 저장된 브리핑 스냅샷 아카이브 — 지난 뉴스를 시각 단위로 다시 봅니다.",
+        description="30분마다 저장된 브리핑 스냅샷 아카이브 — 지난 뉴스를 시각 단위로 다시 봅니다.",
         active="news",
         generated_at="",
         feed="",
