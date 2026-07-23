@@ -604,21 +604,31 @@ function _mapUser(u) {
   var m = u.user_metadata || {};
   return { id: u.id, email: u.email || "", name: m.name || m.full_name || (u.email ? u.email.split("@")[0] : "사용자") };
 }
+var _loginTrigger = null;
 function openLogin(cb) {
   loginCallback = cb || null;
   if (!sb) { toast("로그인 서비스를 불러오지 못했어요. 새로고침 후 다시 시도해 주세요."); return; }
   var m = document.getElementById("login-modal");
-  if (m) { m.hidden = false; var g = document.getElementById("google-login"); if (g) g.focus(); }
+  if (m) { _loginTrigger = document.activeElement; m.hidden = false; var g = document.getElementById("google-login"); if (g) g.focus(); }
   else { startGoogleLogin(); }
 }
 function startGoogleLogin() {
   if (!sb) return;
   try { sessionStorage.setItem("goreun_welcome", "1"); } catch (e) {}  // 실제 로그인 행동 표시(페이지 이동 시 세션복원과 구분)
-  sb.auth.signInWithOAuth({ provider: "google", options: { redirectTo: location.origin + location.pathname } });
+  var g = document.getElementById("google-login");
+  if (g) { g.disabled = true; var sp = g.querySelector("span"); if (sp) sp.textContent = "이동 중…"; }
+  sb.auth.signInWithOAuth({ provider: "google", options: { redirectTo: location.origin + location.pathname } })
+    .then(function (res) {
+      if (res && res.error) {  // 성공 시엔 리다이렉트로 페이지가 떠나므로 여기 안 옴
+        if (g) { g.disabled = false; var s2 = g.querySelector("span"); if (s2) s2.textContent = "Google로 계속하기"; }
+        toast("로그인을 시작하지 못했어요. 잠시 후 다시 시도해 주세요.");
+      }
+    });
 }
 function closeLogin() {
   var m = document.getElementById("login-modal");
   if (m) m.hidden = true;
+  if (_loginTrigger && _loginTrigger.focus) { try { _loginTrigger.focus(); } catch (e) {} _loginTrigger = null; }
 }
 function renderAuth() {
   var area = document.getElementById("auth-area");
@@ -660,6 +670,14 @@ var _lmodal = document.getElementById("login-modal");
 if (_lmodal) {
   _lmodal.addEventListener("click", function (e) { if (e.target === _lmodal) closeLogin(); });
   document.addEventListener("keydown", function (e) { if (e.key === "Escape" && !_lmodal.hidden) closeLogin(); });
+  _lmodal.addEventListener("keydown", function (e) {  // Tab 포커스 트랩(모달 밖으로 새어나가지 않게)
+    if (e.key !== "Tab") return;
+    var f = _lmodal.querySelectorAll("button:not([disabled]), a[href]");
+    if (!f.length) return;
+    var first = f[0], last = f[f.length - 1];
+    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+  });
 }
 
 renderAuth();  // 세션 확인 전 초기 렌더(로그인 버튼)
@@ -684,6 +702,16 @@ if (sb) {
         toast(currentUser.name + " 님, 환영합니다");
       }
       if (typeof syncOnLogin === "function") syncOnLogin();
+      // 로그인 전 누른 스크랩을 리다이렉트 넘어 복원
+      var pend = null; try { pend = sessionStorage.getItem("goreun_pending_scrap"); } catch (e) {}
+      if (pend) {
+        try { sessionStorage.removeItem("goreun_pending_scrap"); } catch (e) {}
+        try {
+          var pit = JSON.parse(pend);
+          if (!isScrapped(pit.id)) { toggleScrap(pit); serverScrapUpsert(pit); toast("스크랩북에 저장했습니다 ★"); }
+          if (typeof refreshScrapStars === "function") refreshScrapStars();
+        } catch (e) {}
+      }
       if (loginCallback) { var cb = loginCallback; loginCallback = null; try { cb(); } catch (e) {} }
     }
   });
@@ -778,7 +806,8 @@ document.querySelectorAll(".scrap-btn").forEach(function (btn) {
     e.preventDefault();
     var item = JSON.parse(btn.dataset.scrap);
     if (!authUser()) {
-      openLogin(function () {
+      try { sessionStorage.setItem("goreun_pending_scrap", btn.dataset.scrap); } catch (e) {}  // 리다이렉트 넘어 보존
+      openLogin(function () {  // 팝업/비리다이렉트 경로용 폴백
         var on2 = toggleScrap(item);
         paintStar(btn, on2);
         if (on2) serverScrapUpsert(item); else serverScrapDelete(item);
@@ -1718,7 +1747,7 @@ def _page(
     jsonld_breadcrumb: bool = True, noindex: bool = False,
 ) -> str:
     nav = "".join(
-        f'<a href="{asset_prefix}{href}" class="px-2 py-1 rounded-lg text-sm '
+        f'<a href="{asset_prefix}{href}" class="px-3 py-2.5 rounded-lg text-sm inline-flex items-center min-h-[44px] '
         + (
             "font-bold text-blue-600 dark:text-blue-400"
             if active == key
@@ -1841,7 +1870,7 @@ def _page(
     </div>
 
     <div class="flex items-center justify-between py-2 overflow-x-auto no-scrollbar">
-      <nav class="flex items-center gap-1 overflow-x-auto no-scrollbar [&>a]:shrink-0" aria-label="페이지">{nav}</nav>
+      <nav class="flex items-center gap-2 overflow-x-auto no-scrollbar [&>a]:shrink-0" aria-label="페이지">{nav}</nav>
       <a href="search.html" class="hidden sm:flex items-center gap-1.5 text-xs text-neutral-400 dark:text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300 px-2 py-1 rounded-lg transition-colors shrink-0">
         <span>🔍 검색</span>
         <kbd id="search-kbd" class="hidden md:inline-block font-mono text-[10px] bg-stone-200/70 dark:bg-neutral-800 px-1.5 py-0.5 rounded border border-stone-300/50 dark:border-neutral-700"></kbd>
@@ -1873,7 +1902,7 @@ def _page(
       <span>Google로 계속하기</span>
     </button>
     <p class="text-[11px] text-neutral-400 mt-4 leading-relaxed break-keep">계속하면 <a href="{asset_prefix}privacy.html" class="underline hover:text-blue-600 dark:hover:text-blue-400">개인정보처리방침</a>에 동의하게 됩니다. 이메일·이름과 스크랩·읽은 기사 성향이 계정에 저장됩니다.</p>
-    <button type="button" id="login-close" class="mt-3 w-full text-center text-xs text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200">닫기</button>
+    <button type="button" id="login-close" class="mt-3 w-full min-h-[44px] inline-flex items-center justify-center text-xs text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200">닫기</button>
   </div>
 </div>
 <button type="button" id="to-top" hidden aria-label="맨 위로" class="fixed bottom-6 right-5 z-40 w-11 h-11 rounded-full bg-neutral-900 text-stone-50 dark:bg-neutral-100 dark:text-neutral-900 shadow-xl text-lg hover:scale-105 active:scale-95 transition-transform flex items-center justify-center">↑</button>
@@ -1952,7 +1981,7 @@ def _render_bias_bar(bias: dict | None) -> str:
     bar = f'<div class="flex h-1.5 rounded-full overflow-hidden bg-stone-200 dark:bg-neutral-700">{"".join(segments)}</div>'
     return f"""<div class="mb-2.5" aria-label="보도 매체 성향 분포">
   {bar}
-  <div class="flex flex-wrap gap-3 text-[10px] text-neutral-400 mt-1.5">{"".join(labels)}</div>
+  <div class="flex flex-wrap gap-3 text-[11px] text-neutral-500 dark:text-neutral-400 mt-1.5">{"".join(labels)}</div>
 </div>"""
 
 
@@ -2008,7 +2037,7 @@ OPINION_SCRIPT = """(function () {
       fetch(URL + "/rest/v1/opinions?issue_key=eq." + encodeURIComponent(ikey) + "&status=eq.visible&select=id,body,x,y&order=created_at.desc&limit=200", { headers: HD })
         .then(function (r) { return r.json(); })
         .then(function (ops) { render(box, ops || [], mineId); })
-        .catch(function () { box.innerHTML = '<p class="text-xs text-neutral-400">불러오기 실패</p>'; });
+        .catch(function () { box.innerHTML = '<p class="text-xs text-neutral-500 dark:text-neutral-400">불러오기 실패</p>'; });
     }
     det.addEventListener("toggle", function () {
       if (!det.open) return;
@@ -2023,10 +2052,10 @@ OPINION_SCRIPT = """(function () {
       fetch(URL + "/functions/v1/submit-opinion", { method: "POST", headers: Object.assign({ "Content-Type": "application/json" }, HD), body: JSON.stringify({ issue_key: ikey, body: body, x: selX }) })
         .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
         .then(function (res) {
-          if (res.ok && res.d && res.d.id) { markCommented(ikey); loaded = true; mineId = res.d.id; ta.value = ""; load(); }
-          else { alert(res.d && res.d.error ? res.d.error : "제출에 실패했어요."); }
+          if (res.ok && res.d && res.d.id) { markCommented(ikey); loaded = true; mineId = res.d.id; ta.value = ""; load(); toast("댓글이 등록되었어요"); }
+          else { toast(res.d && res.d.error ? res.d.error : "제출에 실패했어요."); }
         })
-        .catch(function () { alert("제출에 실패했어요. 잠시 후 다시 시도해 주세요."); })
+        .catch(function () { toast("제출에 실패했어요. 잠시 후 다시 시도해 주세요."); })
         .then(function () { btn.disabled = false; });
     });
   });
@@ -2075,9 +2104,9 @@ def _opinion_map_html(issue: dict) -> str:
     <form class="op-form mt-2 flex flex-col gap-2">
       <textarea maxlength="200" rows="2" required placeholder="이 이슈에 대한 내 생각을 한두 문장으로…" class="w-full rounded-lg border border-stone-300 dark:border-neutral-600 bg-white dark:bg-neutral-900 px-2.5 py-1.5 text-sm resize-none focus:outline-none focus:border-violet-500"></textarea>
       <div class="op-lean flex items-center gap-1.5" role="group" aria-label="내 성향 선택">
-        <button type="button" class="op-lean-btn flex-1 rounded-lg border border-stone-300 dark:border-neutral-600 py-1.5 text-[11px] font-medium text-blue-600 dark:text-blue-400 transition-colors" data-x="-1" aria-pressed="false">진보</button>
-        <button type="button" class="op-lean-btn op-lean-sel flex-1 rounded-lg border border-stone-300 dark:border-neutral-600 py-1.5 text-[11px] font-medium text-neutral-600 dark:text-neutral-300 transition-colors" data-x="0" aria-pressed="true">중도</button>
-        <button type="button" class="op-lean-btn flex-1 rounded-lg border border-stone-300 dark:border-neutral-600 py-1.5 text-[11px] font-medium text-red-600 dark:text-red-400 transition-colors" data-x="1" aria-pressed="false">보수</button>
+        <button type="button" class="op-lean-btn flex-1 min-h-[44px] flex items-center justify-center rounded-lg border border-stone-300 dark:border-neutral-600 py-2.5 text-xs font-medium text-blue-600 dark:text-blue-400 transition-colors" data-x="-1" aria-pressed="false">진보</button>
+        <button type="button" class="op-lean-btn op-lean-sel flex-1 min-h-[44px] flex items-center justify-center rounded-lg border border-stone-300 dark:border-neutral-600 py-2.5 text-xs font-medium text-neutral-600 dark:text-neutral-300 transition-colors" data-x="0" aria-pressed="true">중도</button>
+        <button type="button" class="op-lean-btn flex-1 min-h-[44px] flex items-center justify-center rounded-lg border border-stone-300 dark:border-neutral-600 py-2.5 text-xs font-medium text-red-600 dark:text-red-400 transition-colors" data-x="1" aria-pressed="false">보수</button>
       </div>
       <button type="submit" class="self-end rounded-lg bg-violet-600 hover:bg-violet-700 text-white text-xs font-medium px-3 py-1.5">댓글 남기기</button>
     </form>
@@ -2245,14 +2274,13 @@ def _render_issue(issue: dict, index: int, opinions: bool = False) -> str:
   <div class="bias-inline hidden mb-3.5">{_render_bias_bar(issue.get("bias"))}</div>
   {constructive_html}
   <div class="card-foot border-t border-stone-200 dark:border-neutral-700 pt-3">
-    <div class="flex items-center gap-2">
+    <div class="flex flex-wrap items-center gap-2">
       <details class="headlines-toggle">
         <summary class="list-none [&::-webkit-details-marker]:hidden cursor-pointer select-none inline-flex items-center gap-1.5 rounded-lg border border-stone-200 dark:border-neutral-600 px-3 py-1.5 text-xs font-medium text-blue-600 dark:text-blue-400 hover:bg-stone-100 dark:hover:bg-neutral-700">
           매체별 헤드라인 {len(heads)}건 <span class="tri">▾</span>
         </summary>
       </details>
-      <span class="flex-1"></span>
-      <button type="button" class="share-btn shrink-0 rounded-lg border border-stone-200 dark:border-neutral-600 px-3 py-1.5 text-xs text-neutral-500 dark:text-neutral-400 hover:text-blue-600 hover:border-blue-500" data-anchor="{anchor}"{f' data-url="{_esc(_SHARE_BASE)}#{anchor}"' if _SHARE_BASE else ""} data-title="{_esc(issue["label"])}" data-text="{_esc(issue["summary"])}">공유</button>
+      <button type="button" class="share-btn shrink-0 ml-auto rounded-lg border border-stone-200 dark:border-neutral-600 px-3 py-1.5 text-xs text-neutral-500 dark:text-neutral-400 hover:text-blue-600 hover:border-blue-500" data-anchor="{anchor}"{f' data-url="{_esc(_SHARE_BASE)}#{anchor}"' if _SHARE_BASE else ""} data-title="{_esc(issue["label"])}" data-text="{_esc(issue["summary"])}">공유</button>
       <button type="button" class="imgsave-btn shrink-0 rounded-lg border border-stone-200 dark:border-neutral-600 px-3 py-1.5 text-xs text-neutral-500 dark:text-neutral-400 hover:text-blue-600 hover:border-blue-500" title="정사각 카드 이미지로 공유 (인스타 스토리·카톡 등, 미지원 시 저장)">이미지 공유</button>
     </div>
     <div class="headlines-body mt-3" hidden>
@@ -2661,7 +2689,7 @@ def build_blindspot_page(
 
     def _column(items: list[dict], title: str, color: str) -> str:
         if not items:
-            return '<p class="text-sm text-neutral-400 py-6 text-center">해당 이슈 없음</p>'
+            return '<p class="text-sm text-neutral-500 dark:text-neutral-400 py-6 text-center">해당 이슈 없음</p>'
         card_list = []
         for it in items:
             heads = "".join(
@@ -2725,7 +2753,7 @@ def build_blindspot_page(
   </div>
 </section>""")
 
-    main_html = f"""<div class="py-6 flex flex-col gap-6">
+    main_html = f"""<div class="max-w-5xl mx-auto py-6 flex flex-col gap-6">
   <div>
     <h1 class="text-xl font-extrabold tracking-tight mb-1">블라인드스팟 — 특정 성향 매체만 보도한 이슈</h1>
     <p class="text-xs text-neutral-400 max-w-[80ch]">블라인드스팟은 한쪽 성향 매체만 보도한 이슈입니다. 지난 항목도 날짜별로 계속 쌓입니다. 성향 분류는 참고용 일반 분류입니다.</p>
@@ -2839,7 +2867,7 @@ def build_frame_page(
   <div class="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4 content-start">{"".join(cards)}</div>
 </section>""")
 
-    body = "".join(sections) or '<p class="text-sm text-neutral-400 py-16 text-center">프레임 분석 대상 이슈가 아직 없습니다.</p>'
+    body = "".join(sections) or '<p class="text-sm text-neutral-500 dark:text-neutral-400 py-16 text-center">프레임 분석 대상 이슈가 아직 없습니다.</p>'
     main_html = f"""<div class="py-6 flex flex-col gap-6">
   <div>
     <h1 class="text-xl font-extrabold tracking-tight mb-1">프레임 체크 — 매체별 어조·시각차 비교</h1>
@@ -2897,6 +2925,11 @@ SEARCH_SCRIPT = """
     }).slice(0, 100);
     stat.textContent = (toks.length || d) ? res.length + "건" : "검색어를 입력하거나 날짜를 선택하세요 (전체 " + items.length + "건 수록)";
     box.textContent = "";
+    if (!res.length && (toks.length || d)) {
+      var em = el("div", "text-center text-sm text-neutral-500 dark:text-neutral-400 py-12");
+      em.innerHTML = "검색 결과가 없어요.<br>다른 단어나 날짜로 시도해 보세요.";
+      box.appendChild(em);
+    }
     res.forEach(function (it) {
       var card = el("a", "block rounded-xl border border-stone-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 p-4 hover:border-blue-400");
       card.href = it.u;
@@ -3058,7 +3091,7 @@ def build_search_assets(
       <option value="">전체 날짜</option>
     </select>
   </div>
-  <p id="search-stat" class="text-xs text-neutral-400"></p>
+  <p id="search-stat" class="text-xs text-neutral-500 dark:text-neutral-400"></p>
   <div id="search-trend" class="hidden rounded-xl border border-stone-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 p-4">
     <p class="text-[11px] font-bold text-neutral-400 mb-2">날짜별 보도 추이 <span class="font-normal">— 막대를 누르면 해당 날짜로 필터</span></p>
     <div id="trend-bars" class="flex items-end gap-1 h-16"></div>
@@ -3746,7 +3779,7 @@ def build_scrapbook_page(
       <ul id="bias-legend" class="flex-1 flex flex-col gap-2 text-sm"></ul>
     </div>
   </section>
-  <div id="scrap-empty" hidden class="text-center text-sm text-neutral-400 py-16">아직 스크랩한 글이 없습니다.<br>뉴스 카드나 커뮤니티 글의 ☆를 눌러 저장해 보세요.</div>
+  <div id="scrap-empty" hidden class="text-center text-sm text-neutral-500 dark:text-neutral-400 py-16">아직 스크랩한 글이 없습니다.<br>뉴스 카드나 커뮤니티 글의 ☆를 눌러 저장해 보세요.</div>
   <section id="scrap-news-sec" hidden>
     <h2 class="text-sm font-bold mb-3">뉴스</h2>
     <div id="scrap-news" class="grid sm:grid-cols-2 gap-4"></div>
@@ -3837,7 +3870,7 @@ def build_diet_page(out_dir: Path, generated_at: str, now: datetime, updated: st
     <h1 class="text-xl font-extrabold tracking-tight">나의 뉴스 다이어트</h1>
     <p class="text-xs text-neutral-400 mt-1">최근 7일간 내가 클릭해 읽은 기사의 성향 분포예요. 로그인하면 <b>계정에 저장</b>되어 기기 간에 동기화되고, 비로그인 시에는 이 브라우저에만 저장됩니다.</p>
   </div>
-  <div id="diet-empty" hidden class="text-center text-sm text-neutral-400 py-16">아직 읽은 기사가 없어요.<br>뉴스 카드에서 '매체별 헤드라인'을 열고 기사를 클릭하면 여기에 식단이 쌓입니다.</div>
+  <div id="diet-empty" hidden class="text-center text-sm text-neutral-500 dark:text-neutral-400 py-16">아직 읽은 기사가 없어요.<br>뉴스 카드에서 '매체별 헤드라인'을 열고 기사를 클릭하면 여기에 식단이 쌓입니다.</div>
   <section id="diet-main" hidden class="grid gap-5 lg:grid-cols-2">
     <div class="rounded-xl border border-stone-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 p-5">
       <h2 class="text-sm font-bold mb-3">이번 주 성향 식단 <span id="diet-total" class="font-normal text-neutral-400 text-xs"></span></h2>
