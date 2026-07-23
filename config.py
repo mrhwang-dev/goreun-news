@@ -189,6 +189,12 @@ ENABLE_NAVER_SEARCH = os.environ.get("ENABLE_NAVER_SEARCH", "").strip().lower() 
 # SOURCES.md 기준 콘텐츠 이용이 제한된 매체 도메인 — 검색 보강 결과에서도 제외한다.
 NAVER_EXCLUDE_DOMAINS = {"hani.co.kr", "sbs.co.kr"}
 
+# 의미 기반 클러스터 병합 (선택, 기본 OFF). CLOVA 임베딩으로 어휘가 달라도 같은
+# 사건인 클러스터를 합친다. CLOVA_API_KEY 필요.
+ENABLE_EMBEDDING = os.environ.get("ENABLE_EMBEDDING", "").strip().lower() in ("1", "true", "yes", "on")
+EMBED_MERGE_TOP = 120         # 임베딩 대상 상위 클러스터 수 (대표 제목만 임베딩)
+EMBED_MERGE_THRESHOLD = 0.82  # 코사인 유사도 임계값 (라이브 관측으로 튜닝)
+
 # Claude 정밀 요약(편향 교차 검증 + 3문장 리포트)을 적용할 상위 이슈 수.
 # 나머지 이슈는 Gemini 1차 분류의 라벨·요약을 그대로 쓴다.
 REFINE_TOP_ISSUES = 12

@@ -137,6 +137,56 @@ def cluster_items(
     return clusters
 
 
+def _cosine(a: list[float], b: list[float]) -> float:
+    dot = sum(x * y for x, y in zip(a, b))
+    na = math.sqrt(sum(x * x for x in a))
+    nb = math.sqrt(sum(y * y for y in b))
+    return dot / (na * nb) if na and nb else 0.0
+
+
+def _redup_and_rank(clusters: list[list[dict]]) -> list[list[dict]]:
+    """클러스터 목록을 매체별 최신 1건으로 정리하고 (매체수, 최신시각)순 정렬."""
+    epoch = datetime.fromtimestamp(0, tz=timezone.utc)
+    out = []
+    for members in clusters:
+        by_outlet: dict[str, dict] = {}
+        for m in members:
+            prev = by_outlet.get(m["outlet"])
+            if prev is None or m["ts"] > prev["ts"]:
+                by_outlet[m["outlet"]] = m
+        out.append(sorted(by_outlet.values(), key=lambda m: m["ts"], reverse=True))
+    out.sort(
+        key=lambda c: (len({m["outlet"] for m in c}), max((m["ts"] for m in c), default=epoch)),
+        reverse=True,
+    )
+    return out
+
+
+def merge_by_embedding(
+    clusters: list[list[dict]], embeddings: list[list[float] | None], threshold: float
+) -> list[list[dict]]:
+    """대표 제목 임베딩의 코사인 유사도가 임계값 이상인 클러스터들을 병합한다.
+
+    어휘 유사도로는 못 묶는 '같은 사건, 다른 표현'을 의미 기반으로 합쳐
+    교차확인(매체 수) 정확도를 높인다. embeddings[i]는 clusters[i]의 대표 벡터
+    (없으면 None → 병합 대상에서 제외). 병합 후 매체별 dedup + 재랭킹.
+    """
+    n = len(clusters)
+    uf = _UnionFind(n)
+    have = [i for i in range(n) if embeddings[i] is not None]
+    for a_pos in range(len(have)):
+        for b_pos in range(a_pos + 1, len(have)):
+            i, j = have[a_pos], have[b_pos]
+            if _cosine(embeddings[i], embeddings[j]) >= threshold:
+                uf.union(i, j)
+
+    groups: dict[int, list[int]] = defaultdict(list)
+    for i in range(n):
+        groups[uf.find(i)].append(i)
+    merged = [[m for ci in members for m in clusters[ci]] for members in groups.values()]
+    return _redup_and_rank(merged)
+
+
 # ── 이슈 점수·핫 분야 슬롯 배분 알고리즘 ────────────────────────────────
 #
 # 1) 이슈 점수 (Cluster Size 최우선):

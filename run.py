@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import subprocess
 from datetime import datetime, timedelta, timezone
@@ -196,9 +197,26 @@ def build_briefing(bias_model: dict | None = None) -> dict:
         except Exception as e:
             print(f"[경고] 네이버 검색 보강 실패 — 건너뜀: {e}")
 
-    clusters = cluster_items(
-        items, config.JACCARD_THRESHOLD, config.OVERLAP_THRESHOLD
-    )[: config.CANDIDATE_ISSUES]
+    clusters = cluster_items(items, config.JACCARD_THRESHOLD, config.OVERLAP_THRESHOLD)
+
+    # 의미 기반 병합(선택): 상위 클러스터 대표 제목을 임베딩해 어휘로는 못 묶는
+    # '같은 사건, 다른 표현'을 합쳐 교차확인(매체 수) 정확도를 높인다.
+    if config.ENABLE_EMBEDDING and os.environ.get("CLOVA_API_KEY"):
+        try:
+            from cluster import merge_by_embedding
+            from embed import fetch_embeddings
+
+            top = clusters[: config.EMBED_MERGE_TOP]
+            reps = [c[0]["title"] for c in top]
+            emb_map = fetch_embeddings(reps)
+            embs = [emb_map.get(r) for r in reps]
+            merged = merge_by_embedding(top, embs, config.EMBED_MERGE_THRESHOLD)
+            clusters = merged + clusters[config.EMBED_MERGE_TOP :]
+            print(f"[임베딩 병합] 상위 {len(top)}개 → {len(merged)}개 (병합 {len(top) - len(merged)}건)")
+        except Exception as e:
+            print(f"[경고] 임베딩 병합 실패 — 어휘 클러스터 유지: {e}")
+
+    clusters = clusters[: config.CANDIDATE_ISSUES]
     print(f"클러스터 {len(clusters)}개 (라벨링 대상)")
 
     # 무-API 모드(config.ENABLE_LLM_LABELING=False)면 LLM을 아예 호출하지 않는다.

@@ -193,6 +193,33 @@ def clova_json(system: str, user: str, schema: dict) -> dict:
     return _with_backoff("CLOVA", call)
 
 
+def clova_embed(text: str) -> list[float]:
+    """CLOVA Studio 임베딩 v2로 단일 텍스트의 벡터를 반환한다."""
+    import urllib.request
+    import uuid
+
+    api_key = os.environ.get("CLOVA_API_KEY")
+    if not api_key:
+        raise RuntimeError("CLOVA_API_KEY 미설정")
+    auth = api_key if api_key.lower().startswith("bearer ") else f"Bearer {api_key}"
+    body = json.dumps({"text": text}, ensure_ascii=False).encode("utf-8")
+    req = urllib.request.Request(
+        "https://clovastudio.stream.ntruss.com/v1/api-tools/embedding/v2",
+        data=body,
+        method="POST",
+        headers={
+            "Authorization": auth,
+            "X-NCP-CLOVASTUDIO-REQUEST-ID": uuid.uuid4().hex,
+            "Content-Type": "application/json; charset=utf-8",
+        },
+    )
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        data = json.loads(resp.read().decode("utf-8"))
+    if str((data.get("status") or {}).get("code")) != "20000":
+        raise RuntimeError(f"CLOVA 임베딩 오류: {data.get('status')}")
+    return data["result"]["embedding"]
+
+
 # ── 폴백 오케스트레이션 ─────────────────────────────────────────────────
 
 _ENGINES = {"claude": claude_json, "gemini": gemini_json, "clova": clova_json}

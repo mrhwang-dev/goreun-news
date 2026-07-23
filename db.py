@@ -39,6 +39,13 @@ def init_db():
                 value TEXT NOT NULL
             )
         """)
+        # embedding_cache table (embed.py) — 제목 해시 → 임베딩 벡터(JSON)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS embedding_cache (
+                k TEXT PRIMARY KEY,
+                v TEXT NOT NULL
+            )
+        """)
         conn.commit()
 
 # DB 초기화

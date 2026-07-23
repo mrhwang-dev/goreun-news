@@ -56,6 +56,8 @@ jobs:
           CLOVA_API_KEY: ${{ secrets.CLOVA_API_KEY }}
           CLOVA_MODEL: ${{ vars.CLOVA_MODEL }}
           LLM_PRIORITY: ${{ vars.LLM_PRIORITY }}
+          # 의미 기반 클러스터 병합. 변수 ENABLE_EMBEDDING=1 로 켠다(CLOVA 임베딩 사용).
+          ENABLE_EMBEDDING: ${{ vars.ENABLE_EMBEDDING }}
           # 네이버 뉴스 검색 보강. 변수 ENABLE_NAVER_SEARCH=1 로 켠다.
           NAVER_CLIENT_ID: ${{ secrets.NAVER_CLIENT_ID }}
           NAVER_CLIENT_SECRET: ${{ secrets.NAVER_CLIENT_SECRET }}
