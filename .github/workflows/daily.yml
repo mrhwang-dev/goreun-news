@@ -56,6 +56,10 @@ jobs:
           CLOVA_API_KEY: ${{ secrets.CLOVA_API_KEY }}
           CLOVA_MODEL: ${{ vars.CLOVA_MODEL }}
           LLM_PRIORITY: ${{ vars.LLM_PRIORITY }}
+          # 네이버 뉴스 검색 보강. 변수 ENABLE_NAVER_SEARCH=1 로 켠다.
+          NAVER_CLIENT_ID: ${{ secrets.NAVER_CLIENT_ID }}
+          NAVER_CLIENT_SECRET: ${{ secrets.NAVER_CLIENT_SECRET }}
+          ENABLE_NAVER_SEARCH: ${{ vars.ENABLE_NAVER_SEARCH }}
           # LLM 라벨링 스위치. Actions 변수 ENABLE_LLM_LABELING=1 로 켜면 LLM 라벨링,
           # 미설정(빈 값)이면 무-API 알고리즘 모드. 실패 시 자동으로 알고리즘 폴백.
           ENABLE_LLM_LABELING: ${{ vars.ENABLE_LLM_LABELING }}

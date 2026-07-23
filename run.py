@@ -184,6 +184,18 @@ def build_briefing(bias_model: dict | None = None) -> dict:
     items = fetch_headlines()
     print(f"헤드라인 {len(items)}건 수집 ({len(config.PRESS_FEEDS)}개 매체)")
 
+    # 네이버 뉴스 검색 보강 (선택) — 링크 기준 중복 제거 후 병합
+    if config.ENABLE_NAVER_SEARCH:
+        try:
+            from fetch_naver import fetch_naver_news
+
+            existing = {it["link"] for it in items}
+            added = [it for it in fetch_naver_news() if it["link"] not in existing]
+            items += added
+            print(f"네이버 검색 보강 후 총 {len(items)}건")
+        except Exception as e:
+            print(f"[경고] 네이버 검색 보강 실패 — 건너뜀: {e}")
+
     clusters = cluster_items(
         items, config.JACCARD_THRESHOLD, config.OVERLAP_THRESHOLD
     )[: config.CANDIDATE_ISSUES]

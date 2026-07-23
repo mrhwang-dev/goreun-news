@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import html
 import json
+import os
 import urllib.parse
 from datetime import datetime
 from pathlib import Path
@@ -1506,6 +1507,28 @@ def _seo_meta(
     return "\n".join([*og, *tw, ld])
 
 
+def _tech_attribution() -> str:
+    """푸터 출처·기술 고지 문구. 실제 설정된(키 보유) 서비스만 정확히 표기한다.
+
+    - 네이버 검색 API·CLOVA 등은 이용약관상 '이용 사실 표시'가 요구되며,
+      AI 자동 생성물임을 함께 밝힌다.
+    """
+    ai: list[str] = []
+    if config.ENABLE_LLM_LABELING:
+        if os.environ.get("CLOVA_API_KEY"):
+            ai.append("네이버 HyperCLOVA X")
+        if os.environ.get("GEMINI_API_KEY"):
+            ai.append("Google Gemini")
+        if config.ENABLE_CLAUDE:
+            ai.append("Anthropic Claude")
+    parts: list[str] = []
+    if ai:
+        parts.append(f"기사 제목·요약은 {' · '.join(ai)}로 자동 생성한 AI 결과물입니다")
+    if config.ENABLE_NAVER_SEARCH and os.environ.get("NAVER_CLIENT_ID"):
+        parts.append("뉴스 수집에 네이버 검색 API를 이용합니다")
+    return ". ".join(parts) + ("." if parts else "")
+
+
 def _page(
     *, title: str, active: str, generated_at: str, feed: str,
     updated_label: str, head_extra: str, tabs_html: str, after_header: str,
@@ -1538,6 +1561,9 @@ def _page(
         else ""
     )
     notes = "".join(f'<p class="mb-2 max-w-[72ch]">{_esc(n)}</p>' for n in footer_notes)
+    tech = _tech_attribution()
+    if tech:
+        notes += f'<p class="mb-2 max-w-[72ch] text-neutral-400 dark:text-neutral-500">{_esc(tech)}</p>'
     sentry = ""
     if config.SENTRY_LOADER_KEY:
         sentry = (

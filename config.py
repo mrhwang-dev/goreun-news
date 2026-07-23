@@ -183,6 +183,12 @@ LLM_PRIORITY = [
     e.strip() for e in (os.environ.get("LLM_PRIORITY") or "clova,gemini,claude").split(",") if e.strip()
 ]
 
+# 네이버 뉴스 검색 API 보강 수집 (기본 OFF). NAVER_CLIENT_ID/SECRET 시크릿 필요.
+# 켜면 분야별 최신 기사를 추가로 모아 교차확인(매체 수)을 강화한다.
+ENABLE_NAVER_SEARCH = os.environ.get("ENABLE_NAVER_SEARCH", "").strip().lower() in ("1", "true", "yes", "on")
+# SOURCES.md 기준 콘텐츠 이용이 제한된 매체 도메인 — 검색 보강 결과에서도 제외한다.
+NAVER_EXCLUDE_DOMAINS = {"hani.co.kr", "sbs.co.kr"}
+
 # Claude 정밀 요약(편향 교차 검증 + 3문장 리포트)을 적용할 상위 이슈 수.
 # 나머지 이슈는 Gemini 1차 분류의 라벨·요약을 그대로 쓴다.
 REFINE_TOP_ISSUES = 12
