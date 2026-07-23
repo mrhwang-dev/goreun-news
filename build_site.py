@@ -1813,11 +1813,6 @@ OPINION_SCRIPT = """(function () {
   var URL = "__SB_URL__", KEY = "__SB_KEY__";
   if (!URL || !KEY) return;
   var HD = { apikey: KEY, Authorization: "Bearer " + KEY };
-  function intensity(t) {
-    var s = 0.35 + Math.min((t.match(/[!?]/g) || []).length * 0.12, 0.35);
-    if (/(절대|무조건|극혐|최악|반드시|결코|말도\\s?안|어이없|웃기)/.test(t)) s += 0.2;
-    return Math.max(0.05, Math.min(1, s + Math.min(t.length / 200 * 0.15, 0.15)));
-  }
   function esc(s) { return (s || "").replace(/[<>&"]/g, function (c) { return { "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;" }[c]; }); }
   function render(box, ops, mineId) {
     var W = 300, H = 150, p = 16;
@@ -1853,11 +1848,13 @@ OPINION_SCRIPT = """(function () {
       e.preventDefault();
       var body = (ta.value || "").trim();
       if (body.length < 2) return;
-      var payload = { issue_key: ikey, body: body, x: parseFloat(sl.value) || 0, y: intensity(body) };
       var btn = form.querySelector("button"); btn.disabled = true;
-      fetch(URL + "/rest/v1/opinions", { method: "POST", headers: Object.assign({ "Content-Type": "application/json", Prefer: "return=representation" }, HD), body: JSON.stringify(payload) })
-        .then(function (r) { return r.json(); })
-        .then(function (rows) { if (rows && rows[0]) mineId = rows[0].id; ta.value = ""; load(); })
+      fetch(URL + "/functions/v1/submit-opinion", { method: "POST", headers: Object.assign({ "Content-Type": "application/json" }, HD), body: JSON.stringify({ issue_key: ikey, body: body, x: parseFloat(sl.value) || 0 }) })
+        .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+        .then(function (res) {
+          if (res.ok && res.d && res.d.id) { mineId = res.d.id; ta.value = ""; load(); }
+          else { alert(res.d && res.d.error ? res.d.error : "제출에 실패했어요."); }
+        })
         .catch(function () { alert("제출에 실패했어요. 잠시 후 다시 시도해 주세요."); })
         .then(function () { btn.disabled = false; });
     });
