@@ -2280,8 +2280,8 @@ def _render_issue(issue: dict, index: int, opinions: bool = False) -> str:
           매체별 헤드라인 {len(heads)}건 <span class="tri">▾</span>
         </summary>
       </details>
-      <button type="button" class="share-btn shrink-0 ml-auto rounded-lg border border-stone-200 dark:border-neutral-600 px-3 py-1.5 text-xs text-neutral-500 dark:text-neutral-400 hover:text-blue-600 hover:border-blue-500" data-anchor="{anchor}"{f' data-url="{_esc(_SHARE_BASE)}#{anchor}"' if _SHARE_BASE else ""} data-title="{_esc(issue["label"])}" data-text="{_esc(issue["summary"])}">공유</button>
-      <button type="button" class="imgsave-btn shrink-0 rounded-lg border border-stone-200 dark:border-neutral-600 px-3 py-1.5 text-xs text-neutral-500 dark:text-neutral-400 hover:text-blue-600 hover:border-blue-500" title="정사각 카드 이미지로 공유 (인스타 스토리·카톡 등, 미지원 시 저장)">이미지 공유</button>
+      <button type="button" class="share-btn shrink-0 ml-auto rounded-lg border border-stone-200 dark:border-neutral-600 px-3 py-1.5 text-xs text-neutral-500 dark:text-neutral-400 hover:text-blue-600 hover:border-blue-500" data-anchor="{anchor}"{f' data-url="{_esc(_SHARE_BASE)}#{anchor}"' if _SHARE_BASE else ""} data-title="{_esc(issue["label"])}" data-text="{_esc(issue["summary"])}" title="이 이슈의 링크를 공유합니다">🔗 링크 공유</button>
+      <button type="button" class="imgsave-btn shrink-0 rounded-lg border border-stone-200 dark:border-neutral-600 px-3 py-1.5 text-xs text-neutral-500 dark:text-neutral-400 hover:text-blue-600 hover:border-blue-500" title="이슈를 정사각 카드 이미지로 만들어 공유합니다 (인스타 스토리·카톡 등, 미지원 시 저장)">🖼️ 이미지 공유</button>
     </div>
     <div class="headlines-body mt-3" hidden>
       {timeline_html}
@@ -3830,19 +3830,21 @@ DIET_SCRIPT = """(function () {
   var counts = {}, total = arr.length;
   arr.forEach(function (x) { counts[x.b] = (counts[x.b] || 0) + 1; });
   document.getElementById("diet-total").textContent = "· 총 " + total + "개";
-  var bar = document.getElementById("diet-bar"), legend = document.getElementById("diet-legend");
-  bar.textContent = ""; legend.textContent = "";  // 재렌더 시 초기화
+  var donut = document.getElementById("diet-donut"), legend = document.getElementById("diet-legend");
+  legend.textContent = "";  // 재렌더 시 초기화
+  var stops = [], acc = 0;  // 도넛(conic-gradient) 세그먼트
   ["progressive", "moderate", "conservative", "unknown"].forEach(function (b) {
     var c = counts[b] || 0; if (!c) return;
-    var pct = Math.round(c / total * 100);
-    var seg = document.createElement("div");
-    seg.style.width = pct + "%"; seg.style.background = BCOL[b]; seg.title = BKO[b] + " " + pct + "%";
-    bar.appendChild(seg);
+    var pct = c / total * 100;
+    stops.push(BCOL[b] + " " + acc + "% " + (acc + pct) + "%");
+    acc += pct;
     var li = document.createElement("li");
     li.className = "flex items-center gap-1.5";
-    li.innerHTML = '<span class="inline-block w-2.5 h-2.5 rounded-full" style="background:' + BCOL[b] + '"></span>' + BKO[b] + ' <b class="tabular-nums">' + pct + '%</b>';
+    li.innerHTML = '<span class="inline-block w-2.5 h-2.5 rounded-full shrink-0" style="background:' + BCOL[b] + '"></span>' + BKO[b] + ' <b class="tabular-nums">' + Math.round(pct) + '%</b> <span class="text-neutral-400 tabular-nums">(' + c + ')</span>';
     legend.appendChild(li);
   });
+  if (donut) donut.style.background = "conic-gradient(" + stops.join(",") + ")";
+  var dtot = document.getElementById("diet-donut-total"); if (dtot) dtot.textContent = total;
   var prog = counts.progressive || 0, cons = counts.conservative || 0;
   var pts = counts[prog >= cons ? "conservative" : "progressive"] || 0;  // 반대 성향 클릭 = 시야 확장
   document.getElementById("diet-points").textContent = pts;
@@ -3874,8 +3876,16 @@ def build_diet_page(out_dir: Path, generated_at: str, now: datetime, updated: st
   <section id="diet-main" hidden class="grid gap-5 lg:grid-cols-2">
     <div class="rounded-xl border border-stone-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 p-5">
       <h2 class="text-sm font-bold mb-3">이번 주 성향 식단 <span id="diet-total" class="font-normal text-neutral-400 text-xs"></span></h2>
-      <div id="diet-bar" class="flex h-5 w-full rounded-full overflow-hidden bg-stone-100 dark:bg-neutral-700"></div>
-      <ul id="diet-legend" class="mt-3 flex flex-wrap gap-x-5 gap-y-1 text-sm text-neutral-600 dark:text-neutral-300"></ul>
+      <div class="mt-3 flex items-center gap-5">
+        <div class="relative w-28 h-28 shrink-0">
+          <div id="diet-donut" class="w-28 h-28 rounded-full" style="background:conic-gradient(#e7e5e4 0% 100%)"></div>
+          <div class="absolute inset-[22%] rounded-full bg-white dark:bg-neutral-800 flex flex-col items-center justify-center">
+            <span id="diet-donut-total" class="text-lg font-extrabold tabular-nums leading-none">0</span>
+            <span class="text-[10px] text-neutral-500 dark:text-neutral-400">기사</span>
+          </div>
+        </div>
+        <ul id="diet-legend" class="flex-1 flex flex-col gap-1.5 text-sm text-neutral-600 dark:text-neutral-300"></ul>
+      </div>
       <p id="diet-msg" class="mt-4 text-xs text-neutral-500 dark:text-neutral-400 leading-relaxed"></p>
     </div>
     <div class="rounded-xl border border-stone-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 p-5">
