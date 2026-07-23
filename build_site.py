@@ -524,6 +524,72 @@ function paintStar(btn, on) {
   btn.classList.toggle("text-amber-500", on);
   btn.setAttribute("aria-pressed", on ? "true" : "false");
 }
+// ── 스크랩·다이어트 서버 동기화 (로그인 시 Supabase 미러링; 로컬은 오프라인 캐시) ──
+var DIET_KEY = "goreun_diet";
+var _syncedThisLoad = false;
+function _scrapKind(it) { return it && it.type === "post" ? "post" : "news"; }
+function serverScrapUpsert(it) {
+  if (!sb || !currentUser || !it || !it.id) return;
+  sb.from("user_scraps").upsert(
+    { user_id: currentUser.id, kind: _scrapKind(it), item_id: it.id, data: it },
+    { onConflict: "user_id,kind,item_id" }
+  ).then(function () {}, function () {});
+}
+function serverScrapDelete(it) {
+  if (!sb || !currentUser || !it || !it.id) return;
+  sb.from("user_scraps").delete()
+    .match({ user_id: currentUser.id, kind: _scrapKind(it), item_id: it.id })
+    .then(function () {}, function () {});
+}
+function serverDietInsert(bias) {
+  if (!sb || !currentUser || !bias) return;
+  sb.from("user_diet").insert({ user_id: currentUser.id, bias: bias }).then(function () {}, function () {});
+}
+function refreshScrapStars() {
+  document.querySelectorAll(".scrap-btn").forEach(function (btn) {
+    try { paintStar(btn, isScrapped(JSON.parse(btn.dataset.scrap).id)); } catch (e) {}
+  });
+}
+function syncOnLogin() {
+  if (!sb || !currentUser || _syncedThisLoad) return;
+  _syncedThisLoad = true;
+  var uid = currentUser.id;
+  // 1) 스크랩: 서버 pull → 로컬과 union 저장, 로컬 전용은 서버로 push(멱등 upsert)
+  sb.from("user_scraps").select("data").eq("user_id", uid).then(function (res) {
+    var server = ((res && res.data) || []).map(function (r) { return r.data; }).filter(function (s) { return s && s.id; });
+    var byId = {};
+    server.forEach(function (s) { byId[s.id] = s; });
+    var toPush = [];
+    loadScraps().forEach(function (s) { if (s && s.id && !byId[s.id]) { byId[s.id] = s; toPush.push(s); } });
+    saveScraps(Object.keys(byId).map(function (k) { return byId[k]; }));
+    toPush.forEach(serverScrapUpsert);
+    refreshScrapStars();
+    if (typeof renderScrapGate === "function") renderScrapGate();
+  }, function () {});
+  // 2) 다이어트: 최초 1회 로컬→서버 이관 후, 서버 → 로컬 최신화(기기 간 동기화)
+  var flag = "goreun_synced_diet_" + uid;
+  function pullDiet() {
+    var since = new Date(Date.now() - 14 * 864e5).toISOString();
+    sb.from("user_diet").select("bias,read_at").eq("user_id", uid).gte("read_at", since)
+      .then(function (res) {
+        var rows = ((res && res.data) || []).map(function (r) { return { b: r.bias, t: new Date(r.read_at).getTime() }; });
+        try { localStorage.setItem(DIET_KEY, JSON.stringify(rows)); } catch (e) {}
+        if (typeof renderDiet === "function") renderDiet();
+      }, function () {});
+  }
+  var migrated = false; try { migrated = !!localStorage.getItem(flag); } catch (e) {}
+  if (!migrated) {
+    try { localStorage.setItem(flag, "1"); } catch (e) {}
+    var local = []; try { local = JSON.parse(localStorage.getItem(DIET_KEY) || "[]"); } catch (e) {}
+    var rows = local.filter(function (x) { return x && x.b; }).map(function (x) {
+      return { user_id: uid, bias: x.b, read_at: new Date(x.t || Date.now()).toISOString() };
+    });
+    if (rows.length) sb.from("user_diet").insert(rows).then(pullDiet, pullDiet);
+    else pullDiet();
+  } else {
+    pullDiet();
+  }
+}
 // ── 로그인 (Supabase 구글 OAuth — 서버 세션 저장) ──
 var SB_URL = "__SB_URL__", SB_KEY = "__SB_KEY__";
 var sb = (window.supabase && SB_URL.indexOf("http") === 0 && SB_KEY)
@@ -601,6 +667,7 @@ if (sb) {
     currentUser = _mapUser(res.data && res.data.session && res.data.session.user);
     renderAuth();
     if (typeof renderScrapGate === "function") renderScrapGate();
+    if (currentUser) syncOnLogin();
   }).catch(function () {});
   sb.auth.onAuthStateChange(function (event, session) {
     var prevId = currentUser && currentUser.id;
@@ -675,6 +742,7 @@ document.addEventListener("click", function (e) {
     arr.push({ t: Date.now(), b: b });
     var cut = Date.now() - 14 * 864e5;  // 14일치만 보관
     localStorage.setItem("goreun_diet", JSON.stringify(arr.filter(function (x) { return x.t >= cut; })));
+    if (typeof serverDietInsert === "function") serverDietInsert(b);  // 로그인 시 서버에도 기록
   } catch (err) {}
 }, true);
 
@@ -702,16 +770,19 @@ document.querySelectorAll(".scrap-btn").forEach(function (btn) {
   paintStar(btn, isScrapped(JSON.parse(btn.dataset.scrap).id));
   btn.addEventListener("click", function (e) {
     e.preventDefault();
+    var item = JSON.parse(btn.dataset.scrap);
     if (!authUser()) {
       openLogin(function () {
-        var on = toggleScrap(JSON.parse(btn.dataset.scrap));
-        paintStar(btn, on);
+        var on2 = toggleScrap(item);
+        paintStar(btn, on2);
+        if (on2) serverScrapUpsert(item); else serverScrapDelete(item);
       });
       toast("스크랩은 로그인 후 이용할 수 있습니다");
       return;
     }
-    var on = toggleScrap(JSON.parse(btn.dataset.scrap));
+    var on = toggleScrap(item);
     paintStar(btn, on);
+    if (on) serverScrapUpsert(item); else serverScrapDelete(item);
     toast(on ? "스크랩북에 저장했습니다 ★" : "스크랩을 해제했습니다");
   });
 });
@@ -1159,7 +1230,7 @@ SCRAPBOOK_SCRIPT = """
       top.appendChild(el("span", "font-semibold text-neutral-400", s.category || "뉴스"));
       var rm = el("button", "text-amber-500 text-base", "★");
       rm.title = "스크랩 해제";
-      rm.addEventListener("click", function () { toggleScrap(s); render(); });
+      rm.addEventListener("click", function () { toggleScrap(s); if (typeof serverScrapDelete === "function") serverScrapDelete(s); render(); });
       top.appendChild(rm);
       card.appendChild(top);
       card.appendChild(el("h3", "fs-t mt-2 mb-1.5 font-bold text-[15px] leading-snug", s.label));
@@ -1183,7 +1254,7 @@ SCRAPBOOK_SCRIPT = """
       var row = el("div", "flex items-center gap-3 px-4 py-3");
       var rm = el("button", "text-amber-500 shrink-0", "★");
       rm.title = "스크랩 해제";
-      rm.addEventListener("click", function () { toggleScrap(s); render(); });
+      rm.addEventListener("click", function () { toggleScrap(s); if (typeof serverScrapDelete === "function") serverScrapDelete(s); render(); });
       row.appendChild(rm);
       var a = el("a", "flex-1 text-sm truncate hover:text-blue-600", s.title);
       a.href = s.link; a.target = "_blank"; a.rel = "noopener nofollow";
@@ -3691,16 +3762,19 @@ DIET_SCRIPT = """(function () {
   var KEY = "goreun_diet";
   var BKO = { progressive: "진보", moderate: "중도", conservative: "보수", unknown: "분류 없음" };
   var BCOL = { progressive: "#3b82f6", moderate: "#9ca3af", conservative: "#ef4444", unknown: "#d6d3d1" };
+  function renderDiet() {
   var arr;
   try { arr = JSON.parse(localStorage.getItem(KEY) || "[]"); } catch (e) { arr = []; }
   arr = arr.filter(function (x) { return x.t >= Date.now() - 7 * 864e5; });  // 최근 7일
   var empty = document.getElementById("diet-empty"), main = document.getElementById("diet-main");
-  if (!arr.length) { if (empty) empty.hidden = false; return; }
+  if (!arr.length) { if (empty) empty.hidden = false; if (main) main.hidden = true; return; }
+  if (empty) empty.hidden = true;
   if (main) main.hidden = false;
   var counts = {}, total = arr.length;
   arr.forEach(function (x) { counts[x.b] = (counts[x.b] || 0) + 1; });
   document.getElementById("diet-total").textContent = "· 총 " + total + "개";
   var bar = document.getElementById("diet-bar"), legend = document.getElementById("diet-legend");
+  bar.textContent = ""; legend.textContent = "";  // 재렌더 시 초기화
   ["progressive", "moderate", "conservative", "unknown"].forEach(function (b) {
     var c = counts[b] || 0; if (!c) return;
     var pct = Math.round(c / total * 100);
@@ -3727,6 +3801,9 @@ DIET_SCRIPT = """(function () {
   else if (prog > cons) msg = "이번 주는 진보 성향(" + pPct + "%)에 치우쳤어요. 보수 시각도 한 번 챙겨볼까요?";
   else msg = "이번 주는 보수 성향(" + cPct + "%)에 치우쳤어요. 진보 시각도 한 번 챙겨볼까요?";
   document.getElementById("diet-msg").textContent = msg;
+  }
+  window.renderDiet = renderDiet;
+  renderDiet();
 })();"""
 
 
