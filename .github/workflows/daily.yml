@@ -72,6 +72,10 @@ jobs:
           # 미설정(빈 값)이면 무-API 알고리즘 모드. 실패 시 자동으로 알고리즘 폴백.
           ENABLE_LLM_LABELING: ${{ vars.ENABLE_LLM_LABELING }}
           BRIEFING_MODEL: ${{ vars.BRIEFING_MODEL }}
+          # AI 요약 맞춤법·띄어쓰기 교정. 변수 ENABLE_SPELLCHECK=1 로 켠다.
+          # SPELLCHECK_MODEL_BACKEND: llm(문맥 교정, CLOVA 사용) | none(내장 정규화만, 무비용).
+          ENABLE_SPELLCHECK: ${{ vars.ENABLE_SPELLCHECK }}
+          SPELLCHECK_MODEL_BACKEND: ${{ vars.SPELLCHECK_MODEL_BACKEND }}
           NEWSLETTER_FORM_ACTION: ${{ vars.NEWSLETTER_FORM_ACTION }}
           NEWSLETTER_FORM_ENTRY: ${{ vars.NEWSLETTER_FORM_ENTRY }}
           ADSENSE_CLIENT_ID: ${{ vars.ADSENSE_CLIENT_ID }}
