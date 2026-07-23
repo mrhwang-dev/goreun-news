@@ -680,6 +680,25 @@ document.addEventListener("click", function (e) {
   } catch (err) {}
 }, true);
 
+// ── 분야 탭 가로 스크롤: 터치 스와이프(기본) + 화살표 클릭 ──
+document.querySelectorAll(".tabs-wrap").forEach(function (wrap) {
+  var sc = wrap.querySelector(".tabs-scroll");
+  var lb = wrap.querySelector(".tabs-arrow-l"), rb = wrap.querySelector(".tabs-arrow-r");
+  if (!sc || !lb || !rb) return;
+  function upd() {
+    var max = sc.scrollWidth - sc.clientWidth;
+    if (max <= 4) { lb.hidden = true; rb.hidden = true; return; }
+    lb.hidden = sc.scrollLeft <= 4;
+    rb.hidden = sc.scrollLeft >= max - 4;
+  }
+  function step(dir) { sc.scrollBy({ left: dir * Math.round(sc.clientWidth * 0.7), behavior: "smooth" }); }
+  lb.addEventListener("click", function () { step(-1); });
+  rb.addEventListener("click", function () { step(1); });
+  sc.addEventListener("scroll", upd, { passive: true });
+  window.addEventListener("resize", upd);
+  upd();
+});
+
 // ── 스크랩: 로그인해야 사용 가능 ──
 document.querySelectorAll(".scrap-btn").forEach(function (btn) {
   paintStar(btn, isScrapped(JSON.parse(btn.dataset.scrap).id));
@@ -942,15 +961,32 @@ document.querySelectorAll(".imgsave-btn").forEach(function (btn) {
       return window.html2canvas(node, { width: 1080, height: 1080, scale: 1, backgroundColor: "#faf9f7" })
         .then(function (canvas) {
           node.remove();
-          var a = document.createElement("a");
-          a.download = "goreun-news.png";
-          a.href = canvas.toDataURL("image/png");
-          a.click();
-          toast("이미지가 저장되었습니다");
+          var h3 = card.querySelector("h3");
+          var title = h3 ? h3.textContent.trim() : "고른뉴스";
+          canvas.toBlob(function (blob) {
+            if (!blob) { toast("이미지 생성에 실패했습니다"); return; }
+            var file = new File([blob], "goreun-news.png", { type: "image/png" });
+            // 모바일: 이미지 파일 공유(인스타 스토리·카톡·메시지 등). 미지원 시 저장.
+            if (navigator.canShare && navigator.canShare({ files: [file] })) {
+              navigator.share({ files: [file], title: title, text: title + " — 고른뉴스" })
+                .then(function () { toast("공유했습니다"); })
+                .catch(function (err) { if (!err || err.name !== "AbortError") saveImageBlob(blob); });
+            } else {
+              saveImageBlob(blob);
+            }
+          }, "image/png");
         });
     }).catch(function () { toast("이미지 생성에 실패했습니다"); });
   });
 });
+function saveImageBlob(blob) {
+  var a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "goreun-news.png";
+  a.click();
+  setTimeout(function () { URL.revokeObjectURL(a.href); }, 1000);
+  toast("이미지가 저장되었습니다");
+}
 
 // ── 모바일: 스크롤 다운 시 헤더 숨김 / 업 시 표시 + Top FAB ──
 var siteHeader = document.getElementById("site-header");
@@ -1439,10 +1475,10 @@ def _headline_anchor(h: dict, title_html: str) -> str:
     )
 
 
-# 감성 톤 색: 긍정=파랑, 부정=빨강, 중립=회색 (프레임 네트워크 버블)
+# 감성 톤 색 — 정치색(진보 파랑/보수 빨강)과 겹치지 않게 초록/주황을 쓴다.
 _SENT_CLS = {
-    "positive": "bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-300",
-    "negative": "bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-300",
+    "positive": "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300",
+    "negative": "bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300",
     "neutral": "bg-stone-100 text-neutral-600 dark:bg-neutral-700 dark:text-neutral-300",
 }
 
@@ -1471,7 +1507,7 @@ def _frame_network(words: list[dict]) -> str:
         + _col("공통", "common", "text-neutral-400")
         + _col("보수", "conservative", "text-red-500")
         + "</div>"
-        + '<p class="text-[10px] text-neutral-400 mt-1.5">톤 색: <span class="text-blue-600 dark:text-blue-400">긍정</span> · <span class="text-red-600 dark:text-red-400">부정</span> · 중립</p>'
+        + '<p class="text-[10px] text-neutral-400 mt-1.5">톤 색: <span class="text-emerald-600 dark:text-emerald-400">긍정</span> · <span class="text-amber-600 dark:text-amber-400">부정</span> · 중립</p>'
     )
 
 
@@ -1616,7 +1652,11 @@ def _page(
         )
     )
     tabs_nav = (
-        f'<nav role="tablist" class="flex gap-2 overflow-x-auto no-scrollbar pb-3" aria-label="필터">{tabs_html}</nav>'
+        '<div class="tabs-wrap relative">'
+        '<button type="button" class="tabs-arrow tabs-arrow-l absolute left-0 top-0 z-10 h-8 w-8 flex items-center justify-center rounded-full bg-white/95 dark:bg-neutral-900/95 border border-stone-200 dark:border-neutral-600 shadow-sm text-lg leading-none text-neutral-500 hover:text-blue-600" aria-label="이전 분야" hidden>‹</button>'
+        f'<nav role="tablist" class="tabs-scroll flex gap-2 overflow-x-auto no-scrollbar pb-3 scroll-smooth" aria-label="필터">{tabs_html}</nav>'
+        '<button type="button" class="tabs-arrow tabs-arrow-r absolute right-0 top-0 z-10 h-8 w-8 flex items-center justify-center rounded-full bg-white/95 dark:bg-neutral-900/95 border border-stone-200 dark:border-neutral-600 shadow-sm text-lg leading-none text-neutral-500 hover:text-blue-600" aria-label="다음 분야" hidden>›</button>'
+        '</div>'
         if tabs_html
         else ""
     )
@@ -1841,6 +1881,8 @@ OPINION_SCRIPT = """(function () {
   var URL = "__SB_URL__", KEY = "__SB_KEY__";
   if (!URL || !KEY) return;
   var HD = { apikey: KEY, Authorization: "Bearer " + KEY };
+  function commented(ikey) { try { return JSON.parse(localStorage.getItem("goreun_commented") || "[]").indexOf(ikey) >= 0; } catch (e) { return false; } }
+  function markCommented(ikey) { try { var a = JSON.parse(localStorage.getItem("goreun_commented") || "[]"); if (a.indexOf(ikey) < 0) { a.push(ikey); localStorage.setItem("goreun_commented", JSON.stringify(a)); } } catch (e) {} }
   function esc(s) { return (s || "").replace(/[<>&"]/g, function (c) { return { "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;" }[c]; }); }
   function render(box, ops, mineId) {
     var W = 300, H = 150, p = 16;
@@ -1858,7 +1900,7 @@ OPINION_SCRIPT = """(function () {
       + '<text x="' + (W - p) + '" y="' + (H - 3) + '" font-size="9" fill="#ef4444" text-anchor="end">보수</text>'
       + '<text x="3" y="' + (p + 3) + '" font-size="8" fill="#a8a29e">강함</text>'
       + dots + '</svg>'
-      + '<p class="text-[11px] text-neutral-400 mt-1">' + ops.length + '개 의견 · 가로=성향, 세로=강도</p>';
+      + '<p class="text-[11px] text-neutral-400 mt-1">' + ops.length + '개 댓글 · 가로=성향, 세로=강도</p>';
   }
   document.querySelectorAll("details[data-opinion]").forEach(function (det) {
     var ikey = det.getAttribute("data-ikey");
@@ -1871,7 +1913,11 @@ OPINION_SCRIPT = """(function () {
         .then(function (ops) { render(box, ops || [], mineId); })
         .catch(function () { box.innerHTML = '<p class="text-xs text-neutral-400">불러오기 실패</p>'; });
     }
-    det.addEventListener("toggle", function () { if (det.open && !loaded) { loaded = true; load(); } });
+    det.addEventListener("toggle", function () {
+      if (!det.open) return;
+      if (commented(ikey)) { if (!loaded) { loaded = true; load(); } }
+      else { box.innerHTML = '<p class="text-xs text-neutral-500 dark:text-neutral-400">\\uD83D\\uDCAC 댓글을 남기면 다른 사람들의 의견 지형도가 열려요.</p>'; }
+    });
     form.addEventListener("submit", function (e) {
       e.preventDefault();
       var body = (ta.value || "").trim();
@@ -1880,7 +1926,7 @@ OPINION_SCRIPT = """(function () {
       fetch(URL + "/functions/v1/submit-opinion", { method: "POST", headers: Object.assign({ "Content-Type": "application/json" }, HD), body: JSON.stringify({ issue_key: ikey, body: body, x: parseFloat(sl.value) || 0 }) })
         .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
         .then(function (res) {
-          if (res.ok && res.d && res.d.id) { mineId = res.d.id; ta.value = ""; load(); }
+          if (res.ok && res.d && res.d.id) { markCommented(ikey); loaded = true; mineId = res.d.id; ta.value = ""; load(); }
           else { alert(res.d && res.d.error ? res.d.error : "제출에 실패했어요."); }
         })
         .catch(function () { alert("제출에 실패했어요. 잠시 후 다시 시도해 주세요."); })
@@ -1926,9 +1972,9 @@ def _opinion_map_html(issue: dict) -> str:
 
     ikey = hashlib.sha1(issue["label"].encode("utf-8")).hexdigest()[:16]
     return f"""<details class="op-root mt-3 rounded-lg border border-violet-200 dark:border-violet-500/30 bg-violet-50/40 dark:bg-violet-500/5" data-opinion data-ikey="{ikey}">
-  <summary class="list-none [&::-webkit-details-marker]:hidden cursor-pointer select-none px-3 py-2 text-xs font-bold text-violet-700 dark:text-violet-300 flex items-center gap-1.5">💬 의견 지형도 <span class="font-normal text-neutral-400">(실험)</span><span class="tri text-violet-400 ml-auto">▾</span></summary>
+  <summary class="list-none [&::-webkit-details-marker]:hidden cursor-pointer select-none px-3 py-2 text-xs font-bold text-violet-700 dark:text-violet-300 flex items-center gap-1.5">💬 댓글 <span class="tri text-violet-400 ml-auto">▾</span></summary>
   <div class="px-3 pb-3">
-    <div class="op-map min-h-[3rem] text-xs text-neutral-400">여는 중…</div>
+    <div class="op-map min-h-[3rem] text-xs text-neutral-400"></div>
     <form class="op-form mt-2 flex flex-col gap-2">
       <textarea maxlength="200" rows="2" required placeholder="이 이슈에 대한 내 생각을 한두 문장으로…" class="w-full rounded-lg border border-stone-300 dark:border-neutral-600 bg-white dark:bg-neutral-900 px-2.5 py-1.5 text-sm resize-none focus:outline-none focus:border-violet-500"></textarea>
       <div class="flex items-center gap-2 text-[11px] text-neutral-500 dark:text-neutral-400">
@@ -1936,9 +1982,9 @@ def _opinion_map_html(issue: dict) -> str:
         <input type="range" min="-1" max="1" step="0.1" value="0" class="flex-1 accent-violet-500" aria-label="내 성향 위치">
         <span class="text-red-500 font-medium">보수</span>
       </div>
-      <button type="submit" class="self-end rounded-lg bg-violet-600 hover:bg-violet-700 text-white text-xs font-medium px-3 py-1.5">내 의견 남기기</button>
+      <button type="submit" class="self-end rounded-lg bg-violet-600 hover:bg-violet-700 text-white text-xs font-medium px-3 py-1.5">댓글 남기기</button>
     </form>
-    <p class="text-[10px] text-neutral-400 mt-1.5">의견은 익명으로 공개 저장됩니다. 부적절한 내용은 삭제될 수 있어요.</p>
+    <p class="text-[10px] text-neutral-400 mt-1.5">댓글은 익명으로 공개 저장됩니다. 남기면 다른 사람들의 의견 지형도가 열려요. 부적절한 내용은 삭제될 수 있어요.</p>
   </div>
 </details>"""
 
@@ -2094,7 +2140,7 @@ def _render_issue(issue: dict, index: int, opinions: bool = False) -> str:
       </details>
       <span class="flex-1"></span>
       <button type="button" class="share-btn shrink-0 rounded-lg border border-stone-200 dark:border-neutral-600 px-3 py-1.5 text-xs text-neutral-500 dark:text-neutral-400 hover:text-blue-600 hover:border-blue-500" data-anchor="{anchor}"{f' data-url="{_esc(_SHARE_BASE)}#{anchor}"' if _SHARE_BASE else ""} data-title="{_esc(issue["label"])}" data-text="{_esc(issue["summary"])}">공유</button>
-      <button type="button" class="imgsave-btn shrink-0 rounded-lg border border-stone-200 dark:border-neutral-600 px-3 py-1.5 text-xs text-neutral-500 dark:text-neutral-400 hover:text-blue-600 hover:border-blue-500" title="인스타그램용 정사각 이미지로 저장">이미지 저장</button>
+      <button type="button" class="imgsave-btn shrink-0 rounded-lg border border-stone-200 dark:border-neutral-600 px-3 py-1.5 text-xs text-neutral-500 dark:text-neutral-400 hover:text-blue-600 hover:border-blue-500" title="정사각 카드 이미지로 공유 (인스타 스토리·카톡 등, 미지원 시 저장)">이미지 공유</button>
     </div>
     <div class="headlines-body mt-3" hidden>
       {timeline_html}
