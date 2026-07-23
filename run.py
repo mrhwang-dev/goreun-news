@@ -269,6 +269,7 @@ def build_briefing(bias_model: dict | None = None) -> dict:
                         "title": m["title"],
                         "link": m["link"],
                         "time": _headline_time_label(m["ts"]),
+                        "ts": int(m["ts"].timestamp()),  # 가로 타임라인 위치 계산용
                         "bias": effective_bias(m["outlet"], bias_model),
                     }
                     for m in sorted(cluster, key=lambda m: m["ts"])[

@@ -1804,6 +1804,42 @@ def _render_issue(issue: dict, index: int) -> str:
         ensure_ascii=False,
     ))
     bias_dots = {"progressive": "#3b82f6", "moderate": "#9ca3af", "conservative": "#ef4444", "unknown": "#d6d3d1"}
+
+    # 가로 이슈 전개 타임라인: 시간 비례 배치 + '어느 진영이 먼저 보도/반대 진영 합류' 인사이트
+    timeline_html = ""
+    _tl = sorted((h for h in heads if h.get("ts")), key=lambda h: h["ts"])
+    if len(_tl) >= 3:
+        _lo, _hi = _tl[0]["ts"], _tl[-1]["ts"]
+        _span = (_hi - _lo) or 1
+        _bko = {"progressive": "진보", "conservative": "보수", "moderate": "중도"}
+        _dots = ""
+        for _h in _tl:
+            _pct = (_h["ts"] - _lo) / _span * 100
+            _c = bias_dots.get(_h.get("bias", "unknown"), "#9ca3af")
+            _sz = "w-3 h-3 z-10" if _h["ts"] == _lo else "w-2 h-2"
+            _dots += (
+                f'<a href="{_esc(_h["link"])}" target="_blank" rel="noopener nofollow" '
+                f'class="absolute top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white dark:border-neutral-800 {_sz}" '
+                f'style="left:{_pct:.1f}%;background:{_c}" title="{_esc(_h["outlet"])} · {_esc(_h.get("time", ""))}"></a>'
+            )
+        _ig = _tl[0].get("bias")
+        _opp = {"progressive": "conservative", "conservative": "progressive"}.get(_ig)
+        _join = next((h for h in _tl if h.get("bias") == _opp), None) if _opp else None
+        if _ig in ("progressive", "conservative"):
+            _msg = f"{_bko[_ig]} 매체가 먼저 보도"
+            if _join:
+                _gap = _join["ts"] - _lo
+                _msg += f", 약 {_gap // 3600}시간 뒤 {_bko[_opp]} 매체 합류" if _gap >= 3600 else f", 약 {max(_gap // 60, 1)}분 뒤 {_bko[_opp]} 매체 합류"
+        else:
+            _msg = f"{len(_tl)}개 보도가 {_span // 3600}시간여에 걸쳐 전개" if _span >= 3600 else f"{len(_tl)}개 보도가 비슷한 시각에 집중"
+        timeline_html = (
+            '<div class="mb-3.5">'
+            f'<p class="text-[11px] font-bold text-neutral-600 dark:text-neutral-300 mb-2">🕐 이슈 전개 <span class="font-normal text-neutral-500 dark:text-neutral-400">— {_esc(_msg)}</span></p>'
+            '<div class="relative h-5 mx-1.5"><div class="absolute left-0 right-0 top-1/2 -translate-y-1/2 h-0.5 rounded bg-stone-200 dark:bg-neutral-700"></div>'
+            f'{_dots}</div>'
+            f'<div class="flex justify-between text-[10px] text-neutral-400 mt-1 px-0.5"><span>{_esc(_tl[0].get("time", ""))}</span><span>{_esc(_tl[-1].get("time", ""))}</span></div></div>'
+        )
+
     framing = issue.get("framing") or {}
     frame_words = framing.get("words") or []
 
@@ -1893,6 +1929,7 @@ def _render_issue(issue: dict, index: int) -> str:
       <button type="button" class="imgsave-btn shrink-0 rounded-lg border border-stone-200 dark:border-neutral-600 px-3 py-1.5 text-xs text-neutral-500 dark:text-neutral-400 hover:text-blue-600 hover:border-blue-500" title="인스타그램용 정사각 이미지로 저장">이미지 저장</button>
     </div>
     <div class="headlines-body mt-3" hidden>
+      {timeline_html}
       {framing_html}
       <div class="flex justify-end -mb-1"><button type="button" class="sort-toggle text-[10px] text-neutral-400 hover:text-blue-600 dark:hover:text-blue-400" data-mode="time">성향순 보기</button></div>
       {_render_bias_bar(issue.get("bias"))}
