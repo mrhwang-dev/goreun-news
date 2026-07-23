@@ -5,6 +5,14 @@
 /* hidden 속성은 어떤 display 유틸리티(flex 등)보다 우선한다 */
 [hidden] { display: none !important; }
 
+/* 키보드 포커스 시 뚜렷한 링 — 입력요소의 focus:outline-none(투명 아웃라인)을 이기도록 !important */
+input:focus-visible,
+textarea:focus-visible,
+[type="search"]:focus-visible {
+  outline: 2px solid #3b82f6 !important;
+  outline-offset: 2px;
+}
+
 /* ── 고른뉴스 커스텀 컴포넌트 ── */
 .no-scrollbar::-webkit-scrollbar { display: none; }
 .no-scrollbar { scrollbar-width: none; }

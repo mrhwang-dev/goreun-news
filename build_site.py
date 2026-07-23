@@ -430,15 +430,21 @@ document.querySelectorAll(".summary-wrap").forEach(function (wrap) {
   var p = wrap.querySelector("p");
   if (p.scrollHeight <= p.clientHeight + 2) {
     wrap.classList.add("no-clamp");
+    // 클램프가 필요 없으면 가짜 버튼(포커스 정지점)이 되지 않도록 상호작용 시맨틱 제거
+    wrap.removeAttribute("role");
+    wrap.removeAttribute("tabindex");
+    wrap.removeAttribute("aria-expanded");
     return;
   }
-  wrap.addEventListener("click", function () {
+  var toggleSummary = function () {
     if (wrap.classList.contains("open")) {
       wrap.classList.remove("open");
+      wrap.setAttribute("aria-expanded", "false");
       return;
     }
     var start = p.clientHeight;
     wrap.classList.add("open");
+    wrap.setAttribute("aria-expanded", "true");
     var end = p.scrollHeight;
     if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
       p.style.maxHeight = start + "px";
@@ -453,6 +459,10 @@ document.querySelectorAll(".summary-wrap").forEach(function (wrap) {
         }, 320);
       });
     }
+  };
+  wrap.addEventListener("click", toggleSummary);
+  wrap.addEventListener("keydown", function (e) {
+    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggleSummary(); }
   });
 });
 
@@ -478,9 +488,11 @@ var toastEl;
 function toast(msg) {
   if (!toastEl) {
     toastEl = document.createElement("div");
-    toastEl.className = "fixed bottom-6 left-1/2 -translate-x-1/2 z-50 rounded-full " +
+    toastEl.className = "fixed bottom-6 left-1/2 -translate-x-1/2 z-50 rounded-2xl " +
       "bg-neutral-900 text-stone-50 dark:bg-neutral-100 dark:text-neutral-900 " +
       "text-sm px-4 py-2 shadow-lg opacity-0 transition-opacity pointer-events-none";
+    toastEl.style.maxWidth = "calc(100vw - 2rem)";
+    toastEl.style.textAlign = "center";
     document.body.appendChild(toastEl);
   }
   toastEl.textContent = msg;
@@ -560,6 +572,7 @@ function renderAuth() {
   if (user) {
     var name = document.createElement("span");
     name.className = "text-xs text-neutral-500 dark:text-neutral-400 px-1";
+    name.style.cssText = "max-width:7rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-block;vertical-align:middle";
     name.textContent = (user.name || user.id) + " 님";
     var out = document.createElement("button");
     out.type = "button";
@@ -663,6 +676,8 @@ if (obModal && !obSeen()) {
   document.getElementById("ob-skip").addEventListener("click", obClose);
   obRender();
   obModal.hidden = false;
+  var obNext = document.getElementById("ob-next");
+  if (obNext) obNext.focus();
 }
 
 // ── 뉴스 다이어트: 클릭한 기사의 성향을 로컬에만 기록 (무추적, 무서버) ──
@@ -840,9 +855,11 @@ if (nlBanner) {
       if (bannerShown || !nlBanner) return;
       bannerShown = true;
       nlBanner.style.transform = "translateY(0)";
+      document.body.classList.add("nl-open");
     };
     document.getElementById("nl-banner-close").addEventListener("click", function () {
       nlBanner.style.transform = "";
+      document.body.classList.remove("nl-open");
       localStorage.setItem("goreun_nl_dismissed", "1");
       setTimeout(function () { nlBanner && nlBanner.remove(); nlBanner = null; }, 500);
     });
@@ -1235,6 +1252,9 @@ SAFE_AREA_STYLE = """<style>
   #to-top { bottom: calc(1.5rem + env(safe-area-inset-bottom)); }
   footer { padding-bottom: calc(3rem + env(safe-area-inset-bottom)); }
 }
+/* 뉴스레터 배너와 홈 인디케이터: 배너를 인셋 위로, 배너가 뜨면 '맨 위로'를 배너 위로 (모바일 겹침 방지) */
+#nl-banner { bottom: calc(1.25rem + env(safe-area-inset-bottom, 0px)); }
+body.nl-open #to-top { bottom: calc(9rem + env(safe-area-inset-bottom, 0px)); }
 /* 네이티브 앱(standalone) 오버스크롤 바운스 시 배경 노출 최소화 */
 html.cap-native { background: #faf9f7; }
 html.cap-native.dark { background: #171717; }
@@ -1499,15 +1519,15 @@ def _frame_network(words: list[dict]) -> str:
 
     def _col(title: str, side: str, tcls: str) -> str:
         chips = " ".join(cols[side]) or '<span class="text-[10px] text-neutral-300 dark:text-neutral-600">—</span>'
-        return f'<div><p class="text-[10px] font-bold mb-1 {tcls}">{title}</p><div class="flex flex-wrap gap-1">{chips}</div></div>'
+        return f'<div><p class="text-[11px] font-bold mb-1 {tcls}">{title}</p><div class="flex flex-wrap gap-1">{chips}</div></div>'
 
     return (
         '<div class="grid grid-cols-3 gap-2 mt-2">'
         + _col("진보", "progressive", "text-blue-500")
-        + _col("공통", "common", "text-neutral-400")
+        + _col("공통", "common", "text-neutral-500 dark:text-neutral-400")
         + _col("보수", "conservative", "text-red-500")
         + "</div>"
-        + '<p class="text-[10px] text-neutral-400 mt-1.5">톤 색: <span class="text-emerald-600 dark:text-emerald-400">긍정</span> · <span class="text-amber-600 dark:text-amber-400">부정</span> · 중립</p>'
+        + '<p class="text-[11px] text-neutral-500 dark:text-neutral-400 mt-1.5">톤 색: <span class="text-emerald-600 dark:text-emerald-400">긍정</span> · <span class="text-amber-600 dark:text-amber-400">부정</span> · 중립</p>'
     )
 
 
@@ -1890,8 +1910,12 @@ OPINION_SCRIPT = """(function () {
     var py = function (y) { return H - p - y * (H - 2 * p); };
     var dots = ops.map(function (o) {
       var col = o.x < -0.2 ? "#3b82f6" : (o.x > 0.2 ? "#ef4444" : "#9ca3af");
-      var ring = mineId && o.id === mineId ? '<circle cx="' + px(o.x) + '" cy="' + py(o.y) + '" r="8" fill="none" stroke="#7c3aed" stroke-width="2"/>' : "";
-      return ring + '<circle cx="' + px(o.x) + '" cy="' + py(o.y) + '" r="3.5" fill="' + col + '" fill-opacity="0.7"><title>' + esc(o.body) + '</title></circle>';
+      var cx = px(o.x), cy = py(o.y);
+      var ring = mineId && o.id === mineId ? '<circle cx="' + cx + '" cy="' + cy + '" r="8" fill="none" stroke="#7c3aed" stroke-width="2"/>' : "";
+      // 보이는 점 + 그 위에 투명한 큰 탭영역(r9): 터치 기기에서 hover 없이도 눌러서 내용 확인
+      return ring
+        + '<circle cx="' + cx + '" cy="' + cy + '" r="3.5" fill="' + col + '" fill-opacity="0.7"><title>' + esc(o.body) + '</title></circle>'
+        + '<circle cx="' + cx + '" cy="' + cy + '" r="9" fill="transparent" data-b="' + esc(o.body) + '" style="cursor:pointer"/>';
     }).join("");
     box.innerHTML = '<svg viewBox="0 0 ' + W + ' ' + H + '" class="w-full h-auto">'
       + '<line x1="' + px(0) + '" y1="' + p + '" x2="' + px(0) + '" y2="' + (H - p) + '" stroke="#d6d3d1" stroke-dasharray="3 3"/>'
@@ -1900,7 +1924,13 @@ OPINION_SCRIPT = """(function () {
       + '<text x="' + (W - p) + '" y="' + (H - 3) + '" font-size="9" fill="#ef4444" text-anchor="end">보수</text>'
       + '<text x="3" y="' + (p + 3) + '" font-size="8" fill="#a8a29e">강함</text>'
       + dots + '</svg>'
-      + '<p class="text-[11px] text-neutral-400 mt-1">' + ops.length + '개 댓글 · 가로=성향, 세로=강도</p>';
+      + '<p class="text-[11px] text-neutral-500 dark:text-neutral-400 mt-1">' + ops.length + '개 댓글 · 가로=성향, 세로=강도 · 점을 누르면 내용이 보여요</p>'
+      + '<p class="op-readout text-xs text-neutral-600 dark:text-neutral-300 mt-1 min-h-[1.1rem] break-keep" aria-live="polite"></p>';
+    var svg = box.querySelector("svg"), ro = box.querySelector(".op-readout");
+    if (svg && ro) svg.addEventListener("click", function (e) {
+      var t = e.target.closest("[data-b]");
+      if (t) ro.textContent = "\\u201C" + t.getAttribute("data-b") + "\\u201D";
+    });
   }
   document.querySelectorAll("details[data-opinion]").forEach(function (det) {
     var ikey = det.getAttribute("data-ikey");
@@ -1954,7 +1984,7 @@ RDN_SCRIPT = """(function () {
   var box = document.getElementById("rdn-nudge");
   if (!box || !picks.length) return;
   function esc(s) { return (s || "").replace(/[<>&]/g, function (m) { return { "<": "&lt;", ">": "&gt;", "&": "&amp;" }[m]; }); }
-  box.innerHTML = '<div class="rounded-xl border border-emerald-200 dark:border-emerald-500/30 bg-emerald-50/60 dark:bg-emerald-500/10 p-4">'
+  box.innerHTML = '<div class="rounded-xl border border-emerald-200 dark:border-emerald-500/30 bg-emerald-50/60 dark:bg-emerald-500/10 p-4 max-w-2xl">'
     + '<p class="text-xs font-bold text-emerald-700 dark:text-emerald-400 mb-1">\\u2696\\uFE0F 균형 추천</p>'
     + '<p class="text-sm text-neutral-700 dark:text-neutral-200 mb-2">최근 <b>' + over + '</b> 성향 기사를 많이 읽으셨어요. <b>' + wantKo + '</b> 시각이 강한 이 이슈도 살펴보세요.</p>'
     + '<ul class="flex flex-col gap-1.5">' + picks.map(function (o) { return '<li><a href="#' + o.id + '" class="text-sm text-emerald-700 dark:text-emerald-300 hover:underline break-keep">\\u2192 ' + esc(o.label) + '</a></li>'; }).join("") + '</ul></div>';
@@ -2024,15 +2054,32 @@ def _render_issue(issue: dict, index: int, opinions: bool = False) -> str:
         _lo, _hi = _tl[0]["ts"], _tl[-1]["ts"]
         _span = (_hi - _lo) or 1
         _bko = {"progressive": "진보", "conservative": "보수", "moderate": "중도"}
+        # 시간 비례 위치 후, 근접 보도끼리 겹치지 않게 최소 간격(min-gap)으로 분산
+        _raw = [(_h["ts"] - _lo) / _span * 100 for _h in _tl]
+        _n = len(_raw)
+        _gap = min(4.0, 100.0 / _n)
+        _pcts = list(_raw)
+        for _i in range(1, _n):                        # 왼→오: 최소 간격 확보
+            if _pcts[_i] < _pcts[_i - 1] + _gap:
+                _pcts[_i] = _pcts[_i - 1] + _gap
+        if _pcts[-1] > 100:                            # 넘치면 오→왼으로 되밀기
+            _pcts[-1] = 100.0
+            for _i in range(_n - 2, -1, -1):
+                if _pcts[_i] > _pcts[_i + 1] - _gap:
+                    _pcts[_i] = _pcts[_i + 1] - _gap
+        _pcts = [max(0.0, min(100.0, _p)) for _p in _pcts]
         _dots = ""
-        for _h in _tl:
-            _pct = (_h["ts"] - _lo) / _span * 100
+        for _h, _pct in zip(_tl, _pcts):
             _c = bias_dots.get(_h.get("bias", "unknown"), "#9ca3af")
-            _sz = "w-3 h-3 z-10" if _h["ts"] == _lo else "w-2 h-2"
+            _first = _h["ts"] == _lo
+            _sz = "w-3 h-3" if _first else "w-2 h-2"
+            _az = " z-10" if _first else ""
+            # 바깥 <a>는 24px 투명 탭영역(터치 타깃 확대), 안쪽 span만 색칠된 점
             _dots += (
                 f'<a href="{_esc(_h["link"])}" target="_blank" rel="noopener nofollow" '
-                f'class="absolute top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white dark:border-neutral-800 {_sz}" '
-                f'data-b="{_esc(_h.get("bias", "unknown"))}" style="left:{_pct:.1f}%;background:{_c}" title="{_esc(_h["outlet"])} · {_esc(_h.get("time", ""))}"></a>'
+                f'class="absolute top-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center justify-center w-6 h-6{_az}" '
+                f'data-b="{_esc(_h.get("bias", "unknown"))}" style="left:{_pct:.1f}%" title="{_esc(_h["outlet"])} · {_esc(_h.get("time", ""))}">'
+                f'<span class="rounded-full border-2 border-white dark:border-neutral-800 {_sz}" style="background:{_c}"></span></a>'
             )
         _ig = _tl[0].get("bias")
         _opp = {"progressive": "conservative", "conservative": "progressive"}.get(_ig)
@@ -2120,7 +2167,7 @@ def _render_issue(issue: dict, index: int, opinions: bool = False) -> str:
     </span>
     <span class="flex items-center gap-2">
       <span class="text-neutral-400">{outlet_count}개 매체</span>
-      <button type="button" class="scrap-btn text-base leading-none text-neutral-300 dark:text-neutral-600 hover:text-amber-500" aria-label="스크랩" data-scrap="{scrap_payload}">☆</button>
+      <button type="button" class="scrap-btn text-base leading-none text-neutral-400 dark:text-neutral-500 hover:text-amber-500" aria-label="스크랩" data-scrap="{scrap_payload}">☆</button>
     </span>
   </div>
   <h3 class="fs-t mt-2.5 mb-1.5 font-bold text-[15px] leading-snug break-keep [text-wrap:balance]">{_esc(issue["label"])}</h3>
@@ -2191,7 +2238,7 @@ def _render_blindspot(blindspot: dict | None) -> str:
         return ""
     return f"""<section class="rounded-xl border border-stone-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 p-5">
   <h2 class="text-sm font-bold mb-0.5">블라인드스팟</h2>
-  <p class="text-[11px] text-neutral-400 mb-2">한쪽 성향 매체만 보도한 이슈 — 놓치기 쉬운 관점입니다</p>
+  <p class="text-xs text-neutral-500 dark:text-neutral-400 mb-2">한쪽 성향 매체만 보도한 이슈 — 놓치기 쉬운 관점입니다</p>
   {"".join(parts)}
   <a href="blindspot.html" class="block mt-2.5 text-xs text-blue-600 dark:text-blue-400 hover:underline">블라인드스팟 전체 보기 →</a>
 </section>"""
@@ -2222,9 +2269,9 @@ def _render_blindspot_nudge(blindspot: dict | None) -> str:
     if not label or n < 2:
         return ""
     return f"""<div class="col-span-full">
-  <style>.bs-nudge input:checked~.bs-reveal{{filter:none;pointer-events:auto}}.bs-nudge input:checked~.bs-cta{{display:none}}.bs-reveal{{filter:blur(7px);pointer-events:none;transition:filter .35s;user-select:none}}</style>
+  <style>.bs-nudge input{{position:absolute;width:1px;height:1px;opacity:0}}.bs-nudge input:checked~.bs-reveal{{filter:none;pointer-events:auto}}.bs-nudge input:checked~.bs-cta{{display:none}}.bs-nudge input:focus-visible~.bs-cta{{outline:2px solid #d97706;outline-offset:2px}}.bs-reveal{{filter:blur(7px);pointer-events:none;transition:filter .35s;user-select:none}}</style>
   <div class="bs-nudge rounded-xl border border-amber-300 dark:border-amber-500/40 bg-amber-50/70 dark:bg-amber-500/10 p-4">
-    <input type="checkbox" id="bs-nudge" class="hidden" aria-hidden="true">
+    <input type="checkbox" id="bs-nudge" class="peer">
     <p class="text-xs font-bold text-amber-700 dark:text-amber-400 mb-1">🕳️ 시야의 사각지대</p>
     <p class="text-sm text-neutral-700 dark:text-neutral-200 break-keep">{covering} 성향 매체 <b>{n}곳</b>이 보도 중이지만, {missing} 성향 매체에서는 다루지 않은 이슈가 있어요.</p>
     <label for="bs-nudge" class="bs-cta inline-flex items-center gap-1.5 mt-3 cursor-pointer rounded-lg border border-amber-400 dark:border-amber-500/50 px-3 py-1.5 text-xs font-medium text-amber-700 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-500/20 select-none">👁 가려진 이슈 확인하기</label>
@@ -2246,7 +2293,7 @@ def _render_sidebar(policy: list[dict], blindspot: dict | None = None) -> str:
     )
     newsletter_form = f"""<section class="rounded-xl border border-stone-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 p-5">
     <h2 class="text-sm font-bold mb-0.5">뉴스레터</h2>
-    <p class="text-[11px] text-neutral-400 mb-3">매일 아침 7시, 요약된 뉴스를 메일로 받아보세요</p>
+    <p class="text-xs text-neutral-500 dark:text-neutral-400 mb-3">매일 아침 7시, 요약된 뉴스를 메일로 받아보세요</p>
     <form id="newsletter" class="flex gap-2" data-action="{_esc(config.NEWSLETTER_FORM_ACTION)}" data-entry="{_esc(config.NEWSLETTER_FORM_ENTRY)}"{_sb_form_attrs()}>
       <input type="email" required placeholder="you@example.com" class="min-w-0 flex-1 rounded-lg border border-stone-300 dark:border-neutral-600 bg-stone-50 dark:bg-neutral-900 px-3 py-1.5 text-sm placeholder:text-neutral-400 focus:outline-none focus:border-blue-500">
       <button type="submit" class="shrink-0 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-3.5 py-1.5">구독</button>
@@ -2255,12 +2302,12 @@ def _render_sidebar(policy: list[dict], blindspot: dict | None = None) -> str:
   </section>"""
     top_viewed = """<section id="top-viewed-panel" hidden class="rounded-xl border border-stone-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 p-5">
     <h2 class="text-sm font-bold mb-0.5">많이 본 이슈</h2>
-    <p class="text-[11px] text-neutral-400 mb-2">독자들이 많이 펼쳐본 이슈 TOP 5</p>
+    <p class="text-xs text-neutral-500 dark:text-neutral-400 mb-2">독자들이 많이 펼쳐본 이슈 TOP 5</p>
     <ol id="top-viewed" class="flex flex-col"></ol>
   </section>"""
     keyword_panel = """<section class="rounded-xl border border-stone-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 p-5">
     <h2 class="text-sm font-bold mb-0.5">키워드 알림</h2>
-    <p class="text-[11px] text-neutral-400 mb-2.5">등록한 키워드가 포함된 이슈를 상단 고정·강조합니다 (이 브라우저에만 저장)</p>
+    <p class="text-xs text-neutral-500 dark:text-neutral-400 mb-2.5">등록한 키워드가 포함된 이슈를 상단 고정·강조합니다 (이 브라우저에만 저장)</p>
     <form id="kw-form" class="flex gap-2">
       <input id="kw-input" type="text" maxlength="20" placeholder="예: 반도체" class="min-w-0 flex-1 rounded-lg border border-stone-300 dark:border-neutral-600 bg-stone-50 dark:bg-neutral-900 px-3 py-1.5 text-sm placeholder:text-neutral-400 focus:outline-none focus:border-blue-500">
       <button type="submit" class="shrink-0 rounded-lg border border-stone-300 dark:border-neutral-600 px-3 py-1.5 text-sm text-neutral-600 dark:text-neutral-300 hover:border-blue-500 hover:text-blue-600">추가</button>
@@ -2270,7 +2317,7 @@ def _render_sidebar(policy: list[dict], blindspot: dict | None = None) -> str:
     policy_panel = (
         f"""<section class="rounded-xl border border-stone-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 p-5">
     <h2 class="text-sm font-bold mb-0.5">정책 브리핑</h2>
-    <p class="text-[11px] text-neutral-400 mb-3">출처: 대한민국 정책브리핑(korea.kr) · 공공누리 제1유형</p>
+    <p class="text-xs text-neutral-500 dark:text-neutral-400 mb-3">출처: 대한민국 정책브리핑(korea.kr) · 공공누리 제1유형</p>
     {items}
   </section>"""
         if policy
@@ -2285,7 +2332,7 @@ def _render_sidebar(policy: list[dict], blindspot: dict | None = None) -> str:
   {keyword_panel}
   <section class="rounded-xl border border-stone-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 p-5">
     <h2 class="text-sm font-bold mb-0.5">공개 API</h2>
-    <p class="text-[11px] text-neutral-400 mb-2.5">이 페이지의 모든 데이터는 JSON으로도 제공됩니다 (매시간 갱신).</p>
+    <p class="text-xs text-neutral-500 dark:text-neutral-400 mb-2.5">이 페이지의 모든 데이터는 JSON으로도 제공됩니다 (매시간 갱신).</p>
     <code class="block rounded-lg bg-stone-100 dark:bg-neutral-900 px-2.5 py-2 text-[11px] overflow-x-auto">GET /briefing.json<br>GET /community.json<br>GET /bias-model.json</code>
   </section>
 </aside>"""
@@ -2402,7 +2449,7 @@ def build(
   <p id="nl-banner-done" hidden class="text-sm font-medium text-emerald-600 dark:text-emerald-400">구독이 완료되었습니다!</p>
 </div>"""
 
-    onboarding = """<div id="onboard-modal" hidden class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+    onboarding = """<div id="onboard-modal" hidden role="dialog" aria-modal="true" aria-labelledby="ob-title" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
   <div class="w-[24rem] max-w-full rounded-2xl border border-stone-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 p-6 shadow-2xl text-center">
     <div id="ob-emoji" class="text-5xl mb-3">⚖️</div>
     <h3 id="ob-title" class="text-lg font-extrabold mb-1.5"></h3>
@@ -2826,7 +2873,7 @@ SEARCH_SCRIPT = """
       var bar = el("div", "w-full max-w-[26px] rounded-t " + (dt === activeDate ? "bg-blue-600" : "bg-blue-300 dark:bg-blue-800 group-hover:bg-blue-500"));
       bar.style.height = Math.max(4, Math.round(byDate[dt] / max * 48)) + "px";
       col.appendChild(bar);
-      col.appendChild(el("span", "text-[9px] text-neutral-400 tabular-nums", dt.slice(5)));
+      col.appendChild(el("span", "text-[10px] text-neutral-500 dark:text-neutral-400 tabular-nums", dt.slice(5)));
       col.addEventListener("click", function () { dateSel.value = (dateSel.value === dt ? "" : dt); render(); });
       trendBars.appendChild(col);
     });
@@ -3131,7 +3178,7 @@ def build_archive_pages(
   <p class="text-xs text-neutral-400 mb-4">{_esc(stamp)} (KST) 시점의 브리핑 스냅샷입니다.
     <a class="text-blue-600 dark:text-blue-400 hover:underline" href="../../">최신 브리핑 보기 →</a>
     <a class="ml-2 text-blue-600 dark:text-blue-400 hover:underline" href="../">전체 아카이브 →</a></p>
-  <section class="grid sm:grid-cols-2 gap-4 content-start">{cards}</section>
+  <section class="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 content-start">{cards}</section>
 </div>"""
         page = _page(
             title=f"{stamp} 브리핑 아카이브 — {config.SITE_TITLE}",
@@ -3352,7 +3399,7 @@ def _metric_line(p: dict) -> str:
         parts.append(f"💬 {_fmt_count(p['comments'])}")
     if not parts:
         return ""
-    return f'<div class="mt-1.5 text-[11px] text-neutral-400 tabular-nums">{" · ".join(parts)}</div>'
+    return f'<div class="mt-1.5 text-xs text-neutral-500 dark:text-neutral-400 tabular-nums">{" · ".join(parts)}</div>'
 
 
 def _trend_keywords(posts: list[dict], top_n: int = 8) -> list[str]:
@@ -3455,7 +3502,7 @@ def build_community_page(
       {hot_badge}
       {news_badge}
       <span class="ml-auto text-xs font-bold text-neutral-300 dark:text-neutral-600 tabular-nums">#{i + 1}</span>
-      <button type="button" class="scrap-btn text-base leading-none text-neutral-300 dark:text-neutral-600 hover:text-amber-500 shrink-0" aria-label="스크랩" data-scrap="{scrap_payload}">☆</button>
+      <button type="button" class="scrap-btn text-base leading-none text-neutral-400 dark:text-neutral-500 hover:text-amber-500 shrink-0" aria-label="스크랩" data-scrap="{scrap_payload}">☆</button>
     </div>
     <a class="block hover:text-blue-600 dark:hover:text-blue-400" href="{_esc(p["link"])}" target="_blank" rel="noopener nofollow">
       <h3 class="text-[15px] sm:text-base font-medium leading-snug line-clamp-2">{_esc(p["title"])}</h3>
@@ -3502,7 +3549,7 @@ def build_community_page(
     news_panel = (
         f"""<section class="rounded-xl border border-stone-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 p-5">
     <h2 class="text-sm font-bold mb-0.5">📰 커뮤니티가 주목한 뉴스</h2>
-    <p class="text-[11px] text-neutral-400 mb-2">해외토픽·시사성 게시물</p>
+    <p class="text-xs text-neutral-500 dark:text-neutral-400 mb-2">해외토픽·시사성 게시물</p>
     {news_rows}
   </section>"""
         if news_posts
@@ -3603,7 +3650,7 @@ def build_scrapbook_page(
   </div>
   <section id="bias-dash" hidden class="rounded-xl border border-stone-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 p-5">
     <h2 class="text-sm font-bold mb-1">내가 주로 읽는 뉴스의 성향 비율</h2>
-    <p class="text-[11px] text-neutral-400 mb-4">스크랩한 뉴스에 참여한 매체들의 성향 분포입니다 (참고용 일반 분류)</p>
+    <p class="text-xs text-neutral-500 dark:text-neutral-400 mb-4">스크랩한 뉴스에 참여한 매체들의 성향 분포입니다 (참고용 일반 분류)</p>
     <div class="flex items-center gap-7">
       <div id="bias-donut" class="w-28 h-28 rounded-full shrink-0 flex items-center justify-center">
         <div class="w-[4.5rem] h-[4.5rem] rounded-full bg-white dark:bg-neutral-800 flex flex-col items-center justify-center">
@@ -3694,13 +3741,13 @@ DIET_SCRIPT = """(function () {
 
 
 def build_diet_page(out_dir: Path, generated_at: str, now: datetime, updated: str, stamp: str) -> Path:
-    main_html = """<div class="max-w-2xl mx-auto py-6 flex flex-col gap-6">
+    main_html = """<div class="max-w-4xl mx-auto py-6 flex flex-col gap-6">
   <div>
     <h1 class="text-xl font-extrabold tracking-tight">나의 뉴스 다이어트</h1>
     <p class="text-xs text-neutral-400 mt-1">최근 7일간 내가 클릭해 읽은 기사의 성향 분포예요. 이 기록은 <b>이 브라우저에만</b> 저장되며 어디로도 전송되지 않습니다.</p>
   </div>
   <div id="diet-empty" hidden class="text-center text-sm text-neutral-400 py-16">아직 읽은 기사가 없어요.<br>뉴스 카드에서 '매체별 헤드라인'을 열고 기사를 클릭하면 여기에 식단이 쌓입니다.</div>
-  <section id="diet-main" hidden class="flex flex-col gap-5">
+  <section id="diet-main" hidden class="grid gap-5 lg:grid-cols-2">
     <div class="rounded-xl border border-stone-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 p-5">
       <h2 class="text-sm font-bold mb-3">이번 주 성향 식단 <span id="diet-total" class="font-normal text-neutral-400 text-xs"></span></h2>
       <div id="diet-bar" class="flex h-5 w-full rounded-full overflow-hidden bg-stone-100 dark:bg-neutral-700"></div>
@@ -3709,7 +3756,7 @@ def build_diet_page(out_dir: Path, generated_at: str, now: datetime, updated: st
     </div>
     <div class="rounded-xl border border-stone-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 p-5">
       <h2 class="text-sm font-bold mb-1">시야 확장 포인트</h2>
-      <p class="text-[11px] text-neutral-400 mb-4">평소 많이 읽는 성향과 <b>반대</b> 성향의 기사를 읽을 때마다 쌓여요.</p>
+      <p class="text-xs text-neutral-500 dark:text-neutral-400 mb-4">평소 많이 읽는 성향과 <b>반대</b> 성향의 기사를 읽을 때마다 쌓여요.</p>
       <div class="flex items-center gap-4">
         <div id="diet-badge" class="text-5xl leading-none">🌰</div>
         <div>
