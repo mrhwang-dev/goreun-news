@@ -1793,7 +1793,90 @@ def _render_bias_bar(bias: dict | None) -> str:
 </div>"""
 
 
-def _render_issue(issue: dict, index: int) -> str:
+OPINION_SCRIPT = """(function () {
+  var URL = "__SB_URL__", KEY = "__SB_KEY__";
+  if (!URL || !KEY) return;
+  var HD = { apikey: KEY, Authorization: "Bearer " + KEY };
+  function intensity(t) {
+    var s = 0.35 + Math.min((t.match(/[!?]/g) || []).length * 0.12, 0.35);
+    if (/(절대|무조건|극혐|최악|반드시|결코|말도\\s?안|어이없|웃기)/.test(t)) s += 0.2;
+    return Math.max(0.05, Math.min(1, s + Math.min(t.length / 200 * 0.15, 0.15)));
+  }
+  function esc(s) { return (s || "").replace(/[<>&"]/g, function (c) { return { "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;" }[c]; }); }
+  function render(box, ops, mineId) {
+    var W = 300, H = 150, p = 16;
+    var px = function (x) { return p + (x + 1) / 2 * (W - 2 * p); };
+    var py = function (y) { return H - p - y * (H - 2 * p); };
+    var dots = ops.map(function (o) {
+      var col = o.x < -0.2 ? "#3b82f6" : (o.x > 0.2 ? "#ef4444" : "#9ca3af");
+      var ring = mineId && o.id === mineId ? '<circle cx="' + px(o.x) + '" cy="' + py(o.y) + '" r="8" fill="none" stroke="#7c3aed" stroke-width="2"/>' : "";
+      return ring + '<circle cx="' + px(o.x) + '" cy="' + py(o.y) + '" r="3.5" fill="' + col + '" fill-opacity="0.7"><title>' + esc(o.body) + '</title></circle>';
+    }).join("");
+    box.innerHTML = '<svg viewBox="0 0 ' + W + ' ' + H + '" class="w-full h-auto">'
+      + '<line x1="' + px(0) + '" y1="' + p + '" x2="' + px(0) + '" y2="' + (H - p) + '" stroke="#d6d3d1" stroke-dasharray="3 3"/>'
+      + '<line x1="' + p + '" y1="' + py(0) + '" x2="' + (W - p) + '" y2="' + py(0) + '" stroke="#d6d3d1"/>'
+      + '<text x="' + p + '" y="' + (H - 3) + '" font-size="9" fill="#3b82f6">진보</text>'
+      + '<text x="' + (W - p) + '" y="' + (H - 3) + '" font-size="9" fill="#ef4444" text-anchor="end">보수</text>'
+      + '<text x="3" y="' + (p + 3) + '" font-size="8" fill="#a8a29e">강함</text>'
+      + dots + '</svg>'
+      + '<p class="text-[11px] text-neutral-400 mt-1">' + ops.length + '개 의견 · 가로=성향, 세로=강도</p>';
+  }
+  document.querySelectorAll("details[data-opinion]").forEach(function (det) {
+    var ikey = det.getAttribute("data-ikey");
+    var box = det.querySelector(".op-map"), form = det.querySelector(".op-form"),
+        ta = det.querySelector("textarea"), sl = det.querySelector("input[type=range]");
+    var loaded = false, mineId = null;
+    function load() {
+      fetch(URL + "/rest/v1/opinions?issue_key=eq." + encodeURIComponent(ikey) + "&status=eq.visible&select=id,body,x,y&order=created_at.desc&limit=200", { headers: HD })
+        .then(function (r) { return r.json(); })
+        .then(function (ops) { render(box, ops || [], mineId); })
+        .catch(function () { box.innerHTML = '<p class="text-xs text-neutral-400">불러오기 실패</p>'; });
+    }
+    det.addEventListener("toggle", function () { if (det.open && !loaded) { loaded = true; load(); } });
+    form.addEventListener("submit", function (e) {
+      e.preventDefault();
+      var body = (ta.value || "").trim();
+      if (body.length < 2) return;
+      var payload = { issue_key: ikey, body: body, x: parseFloat(sl.value) || 0, y: intensity(body) };
+      var btn = form.querySelector("button"); btn.disabled = true;
+      fetch(URL + "/rest/v1/opinions", { method: "POST", headers: Object.assign({ "Content-Type": "application/json", Prefer: "return=representation" }, HD), body: JSON.stringify(payload) })
+        .then(function (r) { return r.json(); })
+        .then(function (rows) { if (rows && rows[0]) mineId = rows[0].id; ta.value = ""; load(); })
+        .catch(function () { alert("제출에 실패했어요. 잠시 후 다시 시도해 주세요."); })
+        .then(function () { btn.disabled = false; });
+    });
+  });
+})();"""
+
+
+def _opinion_map_html(issue: dict) -> str:
+    """의견 지형도(4.B) 컴포넌트. 스위치 ON + Supabase 설정 + 집중 보도(4개 매체+) 이슈에만."""
+    if not (config.ENABLE_OPINIONS and config.SUPABASE_URL and config.SUPABASE_ANON_KEY):
+        return ""
+    if issue.get("outlet_count", 0) < 4:
+        return ""
+    import hashlib
+
+    ikey = hashlib.sha1(issue["label"].encode("utf-8")).hexdigest()[:16]
+    return f"""<details class="op-root mt-3 rounded-lg border border-violet-200 dark:border-violet-500/30 bg-violet-50/40 dark:bg-violet-500/5" data-opinion data-ikey="{ikey}">
+  <summary class="list-none [&::-webkit-details-marker]:hidden cursor-pointer select-none px-3 py-2 text-xs font-bold text-violet-700 dark:text-violet-300 flex items-center gap-1.5">💬 의견 지형도 <span class="font-normal text-neutral-400">(실험)</span><span class="tri text-violet-400 ml-auto">▾</span></summary>
+  <div class="px-3 pb-3">
+    <div class="op-map min-h-[3rem] text-xs text-neutral-400">여는 중…</div>
+    <form class="op-form mt-2 flex flex-col gap-2">
+      <textarea maxlength="200" rows="2" required placeholder="이 이슈에 대한 내 생각을 한두 문장으로…" class="w-full rounded-lg border border-stone-300 dark:border-neutral-600 bg-white dark:bg-neutral-900 px-2.5 py-1.5 text-sm resize-none focus:outline-none focus:border-violet-500"></textarea>
+      <div class="flex items-center gap-2 text-[11px] text-neutral-500 dark:text-neutral-400">
+        <span class="text-blue-500 font-medium">진보</span>
+        <input type="range" min="-1" max="1" step="0.1" value="0" class="flex-1 accent-violet-500" aria-label="내 성향 위치">
+        <span class="text-red-500 font-medium">보수</span>
+      </div>
+      <button type="submit" class="self-end rounded-lg bg-violet-600 hover:bg-violet-700 text-white text-xs font-medium px-3 py-1.5">내 의견 남기기</button>
+    </form>
+    <p class="text-[10px] text-neutral-400 mt-1.5">의견은 익명으로 공개 저장됩니다. 부적절한 내용은 삭제될 수 있어요.</p>
+  </div>
+</details>"""
+
+
+def _render_issue(issue: dict, index: int, opinions: bool = False) -> str:
     ld_json = json.dumps({
         "@context": "https://schema.org",
         "@type": "NewsArticle",
@@ -1891,6 +1974,8 @@ def _render_issue(issue: dict, index: int) -> str:
             + "</div></details>"
         )
 
+    opinion_html = _opinion_map_html(issue) if opinions else ""
+
     # 수직 타임라인: 송고 시간순(1보 → 최신)으로 사건의 흐름을 보여준다
     rows = "".join(
         f'<li class="relative" data-b="{_esc(h.get("bias", "unknown"))}" data-t="{_esc(h.get("time", ""))}">'
@@ -1933,6 +2018,7 @@ def _render_issue(issue: dict, index: int) -> str:
   </div>
   <div class="bias-inline hidden mb-3.5">{_render_bias_bar(issue.get("bias"))}</div>
   {constructive_html}
+  {opinion_html}
   <div class="card-foot border-t border-stone-200 dark:border-neutral-700 pt-3">
     <div class="flex items-center gap-2">
       <details class="headlines-toggle">
@@ -2159,7 +2245,7 @@ def build(
     nudge_done = False
     cards = []
     for i, issue in enumerate(issues):
-        card = _render_issue(issue, i)
+        card = _render_issue(issue, i, opinions=True)
         if i >= config.INITIAL_CARDS:
             # 무한 스크롤: 최초 12개 이후는 숨겨 두고 스크롤 시 12개씩 공개
             card = card.replace('<article id=', '<article data-lazy="1" id=', 1).replace(
@@ -2236,6 +2322,11 @@ def build(
         jsonld_type="WebSite",
         jsonld_extra=index_jsonld,
         jsonld_breadcrumb=False,
+        extra_script=(
+            OPINION_SCRIPT.replace("__SB_URL__", config.SUPABASE_URL).replace("__SB_KEY__", config.SUPABASE_ANON_KEY)
+            if config.ENABLE_OPINIONS and config.SUPABASE_URL and config.SUPABASE_ANON_KEY
+            else ""
+        ),
     )
     (out_dir / "index.html").write_text(page, encoding="utf-8")
     (out_dir / "sw.js").write_text(

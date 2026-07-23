@@ -197,6 +197,10 @@ ENABLE_DATALAB = os.environ.get("ENABLE_DATALAB", "").strip().lower() in ("1", "
 SUPABASE_URL = os.environ.get("SUPABASE_URL") or "https://nvlinrkabmwwkmrytlqr.supabase.co"
 SUPABASE_ANON_KEY = os.environ.get("SUPABASE_ANON_KEY") or "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im52bGlucmthYm13d2ttcnl0bHFyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ3NzA2MzksImV4cCI6MjEwMDM0NjYzOX0.w3zbAF_xoZZ6eIlR5JuM72Yj5Cj6FFGDuq28VH1OoGA"
 
+# 의견 지형도 라이브 노출 스위치 (기본 OFF). 익명 공개 의견이라, 사전 검열 체계
+# (Edge Function 필터 또는 승인 플로우)를 갖춘 뒤 ENABLE_OPINIONS=1 로 켠다.
+ENABLE_OPINIONS = os.environ.get("ENABLE_OPINIONS", "").strip().lower() in ("1", "true", "yes", "on")
+
 # 의미 기반 클러스터 병합 (선택, 기본 OFF). CLOVA 임베딩으로 어휘가 달라도 같은
 # 사건인 클러스터를 합친다. CLOVA_API_KEY 필요.
 ENABLE_EMBEDDING = os.environ.get("ENABLE_EMBEDDING", "").strip().lower() in ("1", "true", "yes", "on")
