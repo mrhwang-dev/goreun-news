@@ -1849,6 +1849,32 @@ OPINION_SCRIPT = """(function () {
 })();"""
 
 
+RDN_SCRIPT = """(function () {
+  var arr; try { arr = JSON.parse(localStorage.getItem("goreun_diet") || "[]"); } catch (e) { arr = []; }
+  arr = arr.filter(function (x) { return x.t >= Date.now() - 7 * 864e5; });
+  if (arr.length < 5) return;  // 데이터 부족 시 넛지 안 함
+  var c = {}; arr.forEach(function (x) { c[x.b] = (c[x.b] || 0) + 1; });
+  var prog = c.progressive || 0, cons = c.conservative || 0;
+  if (Math.abs(prog - cons) < Math.max(3, (prog + cons) * 0.25)) return;  // 균형이면 넛지 안 함
+  var over = prog > cons ? "진보" : "보수", want = prog > cons ? "conservative" : "progressive", wantKo = prog > cons ? "보수" : "진보";
+  var picks = [];
+  document.querySelectorAll("article[data-bias][data-cat]").forEach(function (art) {
+    if (picks.length >= 2) return;
+    var b; try { b = JSON.parse(art.getAttribute("data-bias") || "{}"); } catch (e) { return; }
+    var p = b.progressive || 0, n = b.conservative || 0, lean = p > n ? "progressive" : (n > p ? "conservative" : null);
+    if (lean === want && (p + n) >= 2) { var h = art.querySelector("h3"); if (h) picks.push({ label: h.textContent.trim(), id: art.id }); }
+  });
+  var box = document.getElementById("rdn-nudge");
+  if (!box || !picks.length) return;
+  function esc(s) { return (s || "").replace(/[<>&]/g, function (m) { return { "<": "&lt;", ">": "&gt;", "&": "&amp;" }[m]; }); }
+  box.innerHTML = '<div class="rounded-xl border border-emerald-200 dark:border-emerald-500/30 bg-emerald-50/60 dark:bg-emerald-500/10 p-4">'
+    + '<p class="text-xs font-bold text-emerald-700 dark:text-emerald-400 mb-1">\\u2696\\uFE0F 균형 추천</p>'
+    + '<p class="text-sm text-neutral-700 dark:text-neutral-200 mb-2">최근 <b>' + over + '</b> 성향 기사를 많이 읽으셨어요. <b>' + wantKo + '</b> 시각이 강한 이 이슈도 살펴보세요.</p>'
+    + '<ul class="flex flex-col gap-1.5">' + picks.map(function (o) { return '<li><a href="#' + o.id + '" class="text-sm text-emerald-700 dark:text-emerald-300 hover:underline break-keep">\\u2192 ' + esc(o.label) + '</a></li>'; }).join("") + '</ul></div>';
+  box.hidden = false;
+})();"""
+
+
 def _opinion_map_html(issue: dict) -> str:
     """의견 지형도(4.B) 컴포넌트. 스위치 ON + Supabase 설정 + 집중 보도(4개 매체+) 이슈에만."""
     if not (config.ENABLE_OPINIONS and config.SUPABASE_URL and config.SUPABASE_ANON_KEY):
@@ -2252,6 +2278,8 @@ def build(
                 'class="rounded-xl', 'class="not-revealed rounded-xl', 1
             )
         cards.append(card)
+        if i == 1:  # 상단에 다양성 추천(4.C RDN) 컨테이너 — 클라 사이드가 채운다
+            cards.append('<section id="rdn-nudge" hidden class="col-span-full"></section>')
         if i == 3:  # 4번째와 5번째 카드 사이 광고
             cards.append(f'<div class="col-span-full">{ad_slot("feed-1")}</div>')
         if i == 4 and nudge_html:  # 피드 중간에 블라인드스팟 넛지 삽입
@@ -2322,7 +2350,7 @@ def build(
         jsonld_type="WebSite",
         jsonld_extra=index_jsonld,
         jsonld_breadcrumb=False,
-        extra_script=(
+        extra_script=RDN_SCRIPT + (
             OPINION_SCRIPT.replace("__SB_URL__", config.SUPABASE_URL).replace("__SB_KEY__", config.SUPABASE_ANON_KEY)
             if config.ENABLE_OPINIONS and config.SUPABASE_URL and config.SUPABASE_ANON_KEY
             else ""
