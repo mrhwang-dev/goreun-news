@@ -152,6 +152,18 @@ ADSENSE_CLIENT_ID = os.environ.get("ADSENSE_CLIENT_ID", "")
 # Google Search Console HTML 태그 확인용 content 값 (vars.GOOGLE_SITE_VERIFICATION)
 GOOGLE_SITE_VERIFICATION = os.environ.get("GOOGLE_SITE_VERIFICATION", "")
 
+# 연락처·운영 주체 (E-E-A-T / 개인정보 보호책임자용). 공개 사이트에 표시되는 값.
+# 필요 시 GitHub Actions Variables(CONTACT_EMAIL/PRIVACY_OFFICER)로 재정의 가능.
+CONTACT_EMAIL = os.environ.get("CONTACT_EMAIL", "facti301@gmail.com")
+PRIVACY_OFFICER = os.environ.get("PRIVACY_OFFICER", "황치웅")
+
+# 이슈 영구 페이지(/issue/<id>/) 보관 정책.
+# archive/*.json은 저장소에 영구 커밋되므로, 이 기간 내에 등장한 이슈는 매 빌드마다
+# /issue/<id>/ 로 재생성된다 → 롤링 404 방지. (정적 호스팅 용량상 '무한'은 불가하므로
+# 보관창을 길게 잡는다. 값을 늘리면 창이 늘고, 페이지≈75KB라 용량·빌드시간과 트레이드오프.)
+ISSUE_PAGE_RETENTION_DAYS = int(os.environ.get("ISSUE_PAGE_RETENTION_DAYS", "30"))
+ISSUE_PAGE_MAX = int(os.environ.get("ISSUE_PAGE_MAX", "6000"))  # 아티팩트 용량 안전 상한
+
 # ── 모델/사이트 ─────────────────────────────────────────────────────────
 # 다중 모델 라우팅: Gemini(대규모 1차 분류) + Claude(상위 이슈 정밀 요약)
 # 비용을 줄이려면 BRIEFING_MODEL=claude-haiku-4-5 로 변경.
