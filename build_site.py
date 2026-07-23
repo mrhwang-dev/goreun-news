@@ -524,41 +524,30 @@ function paintStar(btn, on) {
   btn.classList.toggle("text-amber-500", on);
   btn.setAttribute("aria-pressed", on ? "true" : "false");
 }
-// ── 로그인/회원가입 (아이디·닉네임·비밀번호 — 기기 저장, 비밀번호는 해시) ──
-var AUTH_KEY = "goreun_user";
-var ACCOUNTS_KEY = "goreun_accounts";
-function authUser() {
-  try { return JSON.parse(localStorage.getItem(AUTH_KEY)); } catch (e) { return null; }
-}
-function loadAccounts() {
-  try { return JSON.parse(localStorage.getItem(ACCOUNTS_KEY)) || {}; } catch (e) { return {}; }
-}
-function hasAccount(accounts, id) { return Object.prototype.hasOwnProperty.call(accounts, id); }
-function sha256(text) {
-  return crypto.subtle.digest("SHA-256", new TextEncoder().encode(text)).then(function (buf) {
-    return Array.from(new Uint8Array(buf)).map(function (b) { return b.toString(16).padStart(2, "0"); }).join("");
-  });
-}
+// ── 로그인 (Supabase 구글 OAuth — 서버 세션 저장) ──
+var SB_URL = "__SB_URL__", SB_KEY = "__SB_KEY__";
+var sb = (window.supabase && SB_URL.indexOf("http") === 0 && SB_KEY)
+  ? window.supabase.createClient(SB_URL, SB_KEY, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } })
+  : null;
+window.sbClient = sb;   // 스크랩·다이어트 서버 동기화에서 재사용
+var currentUser = null;
 var loginCallback = null;
-var authMode = "login";
-function setAuthMode(mode) {
-  authMode = mode;
-  var isSignup = mode === "signup";
-  document.getElementById("login-nick").hidden = !isSignup;
-  document.getElementById("login-submit").textContent = isSignup ? "가입하고 시작" : "로그인";
-  document.getElementById("auth-tab-login").setAttribute("aria-selected", String(!isSignup));
-  document.getElementById("auth-tab-signup").setAttribute("aria-selected", String(isSignup));
-  var err = document.getElementById("login-error");
-  if (err) err.hidden = true;
+function authUser() { return currentUser; }
+function _mapUser(u) {
+  if (!u) return null;
+  var m = u.user_metadata || {};
+  return { id: u.id, email: u.email || "", name: m.name || m.full_name || (u.email ? u.email.split("@")[0] : "사용자") };
 }
 function openLogin(cb) {
   loginCallback = cb || null;
+  if (!sb) { toast("로그인 서비스를 불러오지 못했어요. 새로고침 후 다시 시도해 주세요."); return; }
   var m = document.getElementById("login-modal");
-  if (!m) return;
-  setAuthMode("login");
-  m.hidden = false;
-  var i = document.getElementById("login-id");
-  if (i) i.focus();
+  if (m) { m.hidden = false; var g = document.getElementById("google-login"); if (g) g.focus(); }
+  else { startGoogleLogin(); }
+}
+function startGoogleLogin() {
+  if (!sb) return;
+  sb.auth.signInWithOAuth({ provider: "google", options: { redirectTo: location.origin + location.pathname } });
 }
 function closeLogin() {
   var m = document.getElementById("login-modal");
@@ -573,13 +562,14 @@ function renderAuth() {
     var name = document.createElement("span");
     name.className = "text-xs text-neutral-500 dark:text-neutral-400 px-1";
     name.style.cssText = "max-width:7rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-block;vertical-align:middle";
-    name.textContent = (user.name || user.id) + " 님";
+    name.textContent = user.name + " 님";
     var out = document.createElement("button");
     out.type = "button";
     out.className = "rounded-full border border-stone-300 dark:border-neutral-600 bg-white dark:bg-neutral-800 px-3 py-1 text-xs text-neutral-500 dark:text-neutral-400 hover:text-blue-600 hover:border-blue-500";
     out.textContent = "로그아웃";
     out.addEventListener("click", function () {
-      localStorage.removeItem(AUTH_KEY);
+      if (sb) sb.auth.signOut();
+      currentUser = null;
       renderAuth();
       if (typeof renderScrapGate === "function") renderScrapGate();
       toast("로그아웃했습니다");
@@ -594,44 +584,37 @@ function renderAuth() {
     area.appendChild(btn);
   }
 }
-var loginForm = document.getElementById("login-form");
-if (loginForm) {
-  document.getElementById("auth-tab-login").addEventListener("click", function () { setAuthMode("login"); });
-  document.getElementById("auth-tab-signup").addEventListener("click", function () { setAuthMode("signup"); });
-  loginForm.addEventListener("submit", function (e) {
-    e.preventDefault();
-    var id = document.getElementById("login-id").value.trim();
-    var pw = document.getElementById("login-pw").value;
-    var err = document.getElementById("login-error");
-    function fail(msg) { err.textContent = msg; err.hidden = false; }
-    if (!id || !pw) return;
-    if (!(window.crypto && crypto.subtle)) { fail("보안 연결(https)에서만 로그인할 수 있습니다."); return; }
-    sha256("goreun_salt_v1:" + id + ":" + pw).then(function (hash) {
-      var accounts = loadAccounts();
-      var welcome;
-      if (authMode === "signup") {
-        if (hasAccount(accounts, id)) { fail("이미 존재하는 아이디입니다. 로그인 탭을 이용하세요."); return; }
-        var nick = document.getElementById("login-nick").value.trim() || id;
-        accounts[id] = { nick: nick, hash: hash };
-        localStorage.setItem(ACCOUNTS_KEY, JSON.stringify(accounts));
-        localStorage.setItem(AUTH_KEY, JSON.stringify({ id: id, name: nick }));
-        welcome = nick;
-      } else {
-        var account = hasAccount(accounts, id) ? accounts[id] : null;
-        if (!account || account.hash !== hash) { fail("아이디 또는 비밀번호가 일치하지 않습니다."); return; }
-        localStorage.setItem(AUTH_KEY, JSON.stringify({ id: id, name: account.nick }));
-        welcome = account.nick;
-      }
-      closeLogin();
-      renderAuth();
-      if (typeof renderScrapGate === "function") renderScrapGate();
-      toast(welcome + " 님, 환영합니다");
-      if (loginCallback) { var cb = loginCallback; loginCallback = null; cb(); }
-    }).catch(function () { fail("저장 공간을 사용할 수 없어 로그인에 실패했습니다."); });
-  });
-  document.getElementById("login-close").addEventListener("click", closeLogin);
+// 로그인 모달 배선 (구글 버튼·닫기·바깥 클릭·Esc)
+var _gbtn = document.getElementById("google-login");
+if (_gbtn) _gbtn.addEventListener("click", startGoogleLogin);
+var _lclose = document.getElementById("login-close");
+if (_lclose) _lclose.addEventListener("click", closeLogin);
+var _lmodal = document.getElementById("login-modal");
+if (_lmodal) {
+  _lmodal.addEventListener("click", function (e) { if (e.target === _lmodal) closeLogin(); });
+  document.addEventListener("keydown", function (e) { if (e.key === "Escape" && !_lmodal.hidden) closeLogin(); });
 }
-renderAuth();
+
+renderAuth();  // 세션 확인 전 초기 렌더(로그인 버튼)
+if (sb) {
+  sb.auth.getSession().then(function (res) {
+    currentUser = _mapUser(res.data && res.data.session && res.data.session.user);
+    renderAuth();
+    if (typeof renderScrapGate === "function") renderScrapGate();
+  }).catch(function () {});
+  sb.auth.onAuthStateChange(function (event, session) {
+    var prevId = currentUser && currentUser.id;
+    currentUser = _mapUser(session && session.user);
+    renderAuth();
+    if (typeof renderScrapGate === "function") renderScrapGate();
+    if (event === "SIGNED_IN" && currentUser && currentUser.id !== prevId) {
+      closeLogin();
+      toast(currentUser.name + " 님, 환영합니다");
+      if (typeof syncOnLogin === "function") syncOnLogin();
+      if (loginCallback) { var cb = loginCallback; loginCallback = null; try { cb(); } catch (e) {} }
+    }
+  });
+}
 
 // ── 첫 방문 온보딩 가이드 (다단계 기능 소개) ──
 var obModal = document.getElementById("onboard-modal");
@@ -1075,6 +1058,9 @@ window.sentryOnLoad = function () {
 };
 """
 BASE_SCRIPT = BASE_SCRIPT.replace("__FEED_COUNT__", str(len(config.PRESS_FEEDS)))
+BASE_SCRIPT = BASE_SCRIPT.replace("__SB_URL__", config.SUPABASE_URL or "").replace(
+    "__SB_KEY__", config.SUPABASE_ANON_KEY or ""
+)
 
 SCRAPBOOK_SCRIPT = """
 (function () {
@@ -1801,25 +1787,21 @@ def _page(
     <p class="flex flex-wrap gap-x-3 gap-y-1"><span>{site_stamp}</span><span id="visit-count" class="tabular-nums"></span></p>
   </div>
 </footer>
-<div id="login-modal" hidden role="dialog" aria-modal="true" aria-label="로그인 및 회원가입 모달" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4">
-  <div class="w-[22rem] rounded-xl border border-stone-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 p-5 shadow-2xl">
-    <div class="flex gap-1 mb-3">
-      <button type="button" id="auth-tab-login" class="auth-tab flex-1 rounded-lg py-1.5 text-sm font-medium transition-colors" aria-selected="true">로그인</button>
-      <button type="button" id="auth-tab-signup" class="auth-tab flex-1 rounded-lg py-1.5 text-sm font-medium transition-colors" aria-selected="false">회원가입</button>
-    </div>
-    <p class="text-xs text-neutral-400 mb-3 leading-relaxed">계정 정보는 이 기기(브라우저)에만 저장되며 서버로 전송되지 않습니다. 비밀번호는 해시로만 보관됩니다.</p>
-    <form id="login-form" class="flex flex-col gap-2">
-      <input id="login-id" type="text" required maxlength="20" autocomplete="username" placeholder="아이디" class="rounded-lg border border-stone-300 dark:border-neutral-600 bg-stone-50 dark:bg-neutral-900 px-3 py-2 text-sm placeholder:text-neutral-400 focus:outline-none focus:border-blue-500">
-      <input id="login-nick" type="text" maxlength="16" placeholder="닉네임 (선택 — 비우면 아이디 사용)" hidden class="rounded-lg border border-stone-300 dark:border-neutral-600 bg-stone-50 dark:bg-neutral-900 px-3 py-2 text-sm placeholder:text-neutral-400 focus:outline-none focus:border-blue-500">
-      <input id="login-pw" type="password" required maxlength="32" autocomplete="current-password" placeholder="비밀번호" class="rounded-lg border border-stone-300 dark:border-neutral-600 bg-stone-50 dark:bg-neutral-900 px-3 py-2 text-sm placeholder:text-neutral-400 focus:outline-none focus:border-blue-500">
-      <p id="login-error" hidden class="text-xs text-red-500"></p>
-      <button type="submit" id="login-submit" class="rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium py-2 transition-colors">로그인</button>
-    </form>
-    <button type="button" id="login-close" class="mt-2.5 w-full text-center text-xs text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200">닫기</button>
+<div id="login-modal" hidden role="dialog" aria-modal="true" aria-labelledby="login-title" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4">
+  <div class="w-[22rem] max-w-full rounded-xl border border-stone-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 p-6 shadow-2xl text-center">
+    <h2 id="login-title" class="text-base font-extrabold mb-1.5">로그인 / 회원가입</h2>
+    <p class="text-xs text-neutral-500 dark:text-neutral-400 mb-5 leading-relaxed break-keep">구글 계정으로 간편하게 시작하세요.<br>스크랩과 뉴스 다이어트가 <b>기기 간에 동기화</b>됩니다.</p>
+    <button type="button" id="google-login" class="w-full flex items-center justify-center gap-2.5 rounded-lg border border-stone-300 dark:border-neutral-600 bg-white dark:bg-neutral-900 hover:bg-stone-50 dark:hover:bg-neutral-700 px-4 py-2.5 text-sm font-medium transition-colors">
+      <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true"><path fill="#4285F4" d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84a4.14 4.14 0 0 1-1.8 2.72v2.26h2.92c1.7-1.57 2.68-3.88 2.68-6.62z"/><path fill="#34A853" d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.92-2.26c-.8.54-1.84.86-3.04.86-2.34 0-4.32-1.58-5.03-3.7H.96v2.33A9 9 0 0 0 9 18z"/><path fill="#FBBC05" d="M3.97 10.72a5.4 5.4 0 0 1-.28-1.72c0-.6.1-1.18.28-1.72V4.95H.96A9 9 0 0 0 0 9c0 1.45.35 2.82.96 4.05l3.01-2.33z"/><path fill="#EA4335" d="M9 3.58c1.32 0 2.5.45 3.44 1.35l2.58-2.58C13.46.9 11.43 0 9 0A9 9 0 0 0 .96 4.95l3.01 2.33C4.68 5.16 6.66 3.58 9 3.58z"/></svg>
+      <span>Google로 계속하기</span>
+    </button>
+    <p class="text-[11px] text-neutral-400 mt-4 leading-relaxed break-keep">계속하면 <a href="{asset_prefix}privacy.html" class="underline hover:text-blue-600 dark:hover:text-blue-400">개인정보처리방침</a>에 동의하게 됩니다. 이메일·이름과 스크랩·읽은 기사 성향이 계정에 저장됩니다.</p>
+    <button type="button" id="login-close" class="mt-3 w-full text-center text-xs text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200">닫기</button>
   </div>
 </div>
 <button type="button" id="to-top" hidden aria-label="맨 위로" class="fixed bottom-6 right-5 z-40 w-11 h-11 rounded-full bg-neutral-900 text-stone-50 dark:bg-neutral-100 dark:text-neutral-900 shadow-xl text-lg hover:scale-105 active:scale-95 transition-transform flex items-center justify-center">↑</button>
 {banner_html}
+{'<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>' if config.SUPABASE_URL and config.SUPABASE_ANON_KEY else ''}
 <script>{BASE_SCRIPT}</script>
 {f"<script>{extra_script}</script>" if extra_script else ""}
 {f'<script src="{asset_prefix}capacitor.js"></script><script src="{asset_prefix}native.js"></script>' if _APP_BUILD else ""}
