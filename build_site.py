@@ -759,6 +759,15 @@ function wireNewsletterForm(form, doneEl) {
     var action = form.dataset.action;
     var entry = form.dataset.entry;
     var email = form.querySelector("input[type=email]").value;
+    var sbUrl = form.dataset.sbUrl, sbKey = form.dataset.sbKey;
+    if (sbUrl && sbKey) {  // Supabase subscribers 테이블에 저장 (기본 경로)
+      fetch(sbUrl + "/rest/v1/subscribers", { method: "POST",
+        headers: { apikey: sbKey, Authorization: "Bearer " + sbKey, "Content-Type": "application/json" },
+        body: JSON.stringify({ email: email }) })
+        .then(function (r) { if (r.ok || r.status === 409) ok(); else nope(); })  // 409=이미 구독
+        .catch(nope);
+      return;
+    }
     if (!action || !entry) { toast("구독 폼이 아직 연결되지 않았습니다"); return; }
     var body = new FormData();
     body.append(entry, email);
@@ -1522,6 +1531,13 @@ def _seo_meta(
     return "\n".join([*og, *tw, ld])
 
 
+def _sb_form_attrs() -> str:
+    """뉴스레터 폼에 Supabase 저장용 data 속성을 붙인다 (설정 시)."""
+    if config.SUPABASE_URL and config.SUPABASE_ANON_KEY:
+        return f' data-sb-url="{config.SUPABASE_URL}" data-sb-key="{config.SUPABASE_ANON_KEY}"'
+    return ""
+
+
 def _tech_attribution() -> str:
     """푸터 출처·기술 고지 문구. 실제 설정된(키 보유) 서비스만 정확히 표기한다.
 
@@ -2161,7 +2177,7 @@ def _render_sidebar(policy: list[dict], blindspot: dict | None = None) -> str:
     newsletter_form = f"""<section class="rounded-xl border border-stone-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 p-5">
     <h2 class="text-sm font-bold mb-0.5">뉴스레터</h2>
     <p class="text-[11px] text-neutral-400 mb-3">매일 아침 7시, 요약된 뉴스를 메일로 받아보세요</p>
-    <form id="newsletter" class="flex gap-2" data-action="{_esc(config.NEWSLETTER_FORM_ACTION)}" data-entry="{_esc(config.NEWSLETTER_FORM_ENTRY)}">
+    <form id="newsletter" class="flex gap-2" data-action="{_esc(config.NEWSLETTER_FORM_ACTION)}" data-entry="{_esc(config.NEWSLETTER_FORM_ENTRY)}"{_sb_form_attrs()}>
       <input type="email" required placeholder="you@example.com" class="min-w-0 flex-1 rounded-lg border border-stone-300 dark:border-neutral-600 bg-stone-50 dark:bg-neutral-900 px-3 py-1.5 text-sm placeholder:text-neutral-400 focus:outline-none focus:border-blue-500">
       <button type="submit" class="shrink-0 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-3.5 py-1.5">구독</button>
     </form>
@@ -2309,7 +2325,7 @@ def build(
   <button type="button" id="nl-banner-close" class="absolute top-2 right-3 text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200" aria-label="닫기">✕</button>
   <p class="text-sm font-semibold mb-0.5">내일 아침 핵심 뉴스도 요약해 드릴까요?</p>
   <p class="text-xs text-neutral-400 mb-2.5">매일 아침 7시, 메일로 보내드려요.</p>
-  <form id="nl-banner-form" class="flex gap-2" data-action="{_esc(config.NEWSLETTER_FORM_ACTION)}" data-entry="{_esc(config.NEWSLETTER_FORM_ENTRY)}">
+  <form id="nl-banner-form" class="flex gap-2" data-action="{_esc(config.NEWSLETTER_FORM_ACTION)}" data-entry="{_esc(config.NEWSLETTER_FORM_ENTRY)}"{_sb_form_attrs()}>
     <input type="email" required placeholder="you@example.com" class="min-w-0 flex-1 rounded-lg border border-stone-300 dark:border-neutral-600 bg-stone-50 dark:bg-neutral-900 px-3 py-1.5 text-sm placeholder:text-neutral-400 focus:outline-none focus:border-blue-500">
     <button type="submit" class="shrink-0 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-3.5 py-1.5">구독</button>
   </form>

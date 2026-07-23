@@ -22,4 +22,7 @@ jobs:
           GMAIL_USER: ${{ secrets.GMAIL_USER }}
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
           NEWSLETTER_RECIPIENTS: ${{ secrets.NEWSLETTER_RECIPIENTS }}
+          # Supabase 구독자 명단 읽기 (service_role 키 — 비공개 시크릿, 직접 설정)
+          SUPABASE_URL: ${{ vars.SUPABASE_URL || 'https://nvlinrkabmwwkmrytlqr.supabase.co' }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
         run: python send_newsletter.py
