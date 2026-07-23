@@ -152,6 +152,11 @@ ADSENSE_CLIENT_ID = os.environ.get("ADSENSE_CLIENT_ID", "")
 # Google Search Console HTML 태그 확인용 content 값 (vars.GOOGLE_SITE_VERIFICATION)
 GOOGLE_SITE_VERIFICATION = os.environ.get("GOOGLE_SITE_VERIFICATION", "")
 
+# 연락처·운영 주체 (E-E-A-T / 개인정보 보호책임자용).
+# CONTACT_EMAIL 미설정 시 소개·개인정보 문의는 '버그 제보' 버튼으로 폴백한다.
+CONTACT_EMAIL = os.environ.get("CONTACT_EMAIL", "")
+PRIVACY_OFFICER = os.environ.get("PRIVACY_OFFICER", "고른뉴스 운영자")
+
 # ── 모델/사이트 ─────────────────────────────────────────────────────────
 # 다중 모델 라우팅: Gemini(대규모 1차 분류) + Claude(상위 이슈 정밀 요약)
 # 비용을 줄이려면 BRIEFING_MODEL=claude-haiku-4-5 로 변경.

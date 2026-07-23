@@ -1830,7 +1830,9 @@ def _page(
         gsc_tag = f'<meta name="google-site-verification" content="{_esc(config.GOOGLE_SITE_VERIFICATION)}">\n'
     adsense_script = ""
     if config.ADSENSE_CLIENT_ID:
+        # google-adsense-account 메타는 구글의 현행 사이트 소유권 확인 방식(로더 단독보다 견고).
         adsense_script = (
+            f'<meta name="google-adsense-account" content="{_esc(config.ADSENSE_CLIENT_ID)}">\n'
             f'<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client={_esc(config.ADSENSE_CLIENT_ID)}" '
             'crossorigin="anonymous"></script>'
         )
@@ -1844,9 +1846,6 @@ def _page(
 <html lang="ko" data-generated-at="{_esc(generated_at)}" data-feed="{feed}">
 <head>
 <meta charset="utf-8">
-<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-<meta http-equiv="Pragma" content="no-cache">
-<meta http-equiv="Expires" content="0">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>{_esc(title)}</title>
 <meta name="description" content="{_esc(description or config.SITE_DESCRIPTION)}">
@@ -1902,7 +1901,7 @@ def _page(
           <span id="theme-icon">💻</span>
         </button>
 
-        <button type="button" id="bug-report" class="hidden sm:inline-flex rounded-full border border-stone-300 dark:border-neutral-700 bg-white dark:bg-neutral-800 px-3 py-1 text-xs text-neutral-500 dark:text-neutral-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">버그 제보</button>
+        <button type="button" id="bug-report" class="inline-flex rounded-full border border-stone-300 dark:border-neutral-700 bg-white dark:bg-neutral-800 px-3 py-1 text-xs text-neutral-500 dark:text-neutral-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">문의·제보</button>
       </div>
     </div>
 
@@ -3235,6 +3234,15 @@ def _build_doc(out_dir: Path, filename: str, title: str, body: str,
     (out_dir / filename).write_text(page, encoding="utf-8")
 
 
+# 연락처 표기 — CONTACT_EMAIL 설정 시 mailto 노출, 미설정 시 상단 '문의·제보' 버튼으로 폴백.
+# (항상 '버튼'으로 끝나게 하여 '…버튼으로' 조사 연결이 자연스럽게 유지된다)
+_CONTACT_HTML = (
+    f'<a class="text-blue-500" href="mailto:{_esc(config.CONTACT_EMAIL)}">{_esc(config.CONTACT_EMAIL)}</a> 또는 상단 \'문의·제보\' 버튼'
+    if config.CONTACT_EMAIL
+    else "상단 '문의·제보' 버튼"
+)
+
+
 ABOUT_BODY = f"""
 <p>고른뉴스는 <b>"골라 담아, 고르게 전합니다"</b>를 원칙으로 하는 AI 중립 뉴스 브리핑입니다. {len(config.PRESS_FEEDS)}개 언론사(일간지·주간지·월간지·지역지·인터넷 언론·외신 한국어판)의 공개 헤드라인을 매시간 수집해, 같은 사건을 다룬 기사들을 알고리즘으로 묶고 AI가 감정적·평가적 표현을 걷어낸 요약을 새로 씁니다.</p>
 <h2>무엇이 다른가요</h2>
@@ -3249,8 +3257,9 @@ ABOUT_BODY = f"""
 <h2>저작권 원칙</h2>
 <p>고른뉴스는 언론사 기사 본문을 수집·저장·복제하지 않습니다. 이슈 카드는 각 언론사가 공개한 헤드라인(제목)과 원문 링크만을 표시하며, 요약문은 헤드라인에 담긴 정보만을 근거로 AI가 새로 작성한 문장입니다. 매체 성향 분류는 참고용 일반 분류입니다. 모든 기사의 저작권은 각 언론사에 있으며, 자세한 내용은 반드시 원문 기사를 확인해 주세요.</p>
 <p>'정책 브리핑' 섹션은 대한민국 정책브리핑(korea.kr)의 정책뉴스 자료를 활용하였으며, 해당 자료는 공공누리 제1유형에 따라 이용할 수 있습니다.</p>
-<h2>운영</h2>
-<p>1인 운영 프로젝트이며 전 과정이 오픈소스로 공개되어 있습니다. 문의·제보는 상단의 '버그 제보' 버튼을 이용해 주세요.</p>
+<h2>운영·연락처</h2>
+<p>고른뉴스는 <b>{_esc(config.PRIVACY_OFFICER)}</b>가 운영하는 1인 프로젝트이며, 뉴스 수집·군집·요약·렌더링 전 과정이 오픈소스로 공개되어 있습니다.</p>
+<p>문의·제보·정정 요청은 {_CONTACT_HTML}으로 접수해 주세요. 사실과 다른 내용은 확인 후 신속히 정정합니다.</p>
 """
 
 TERMS_BODY = """
@@ -3270,7 +3279,7 @@ TERMS_BODY = """
 <p class="text-neutral-400">시행일: 2026년 7월 22일 · 개정일: 2026년 7월 23일</p>
 """
 
-PRIVACY_BODY = """
+PRIVACY_BODY = f"""
 <p>고른뉴스는 서비스 제공에 필요한 최소한의 개인정보만 처리합니다. 본 방침은 수집 항목·목적·보관·이용자 권리를 설명합니다.</p>
 <h2>1. 수집하는 개인정보와 목적</h2>
 <ul>
@@ -3284,19 +3293,19 @@ PRIVACY_BODY = """
 <h2>3. 처리 위탁 및 국외 이전</h2>
 <p>서비스는 다음 처리자를 이용합니다: <b>Supabase</b>(데이터베이스·인증·서버 저장), <b>Google</b>(로그인 인증 및 광고). 이 과정에서 개인정보가 해당 사업자의 해외 서버에 저장·처리될 수 있습니다.</p>
 <h2>4. 뉴스레터 구독</h2>
-<p>구독 시 입력한 이메일은 뉴스레터 발송 목적에만 사용되며, 폼 전송 대행(FormSubmit) 및 구독자 목록(Supabase)에 보관됩니다. 수신 거부·삭제는 '버그 제보'로 요청하면 즉시 처리합니다.</p>
+<p>구독 시 입력한 이메일은 뉴스레터 발송 목적에만 사용되며, 폼 전송 대행(FormSubmit) 및 구독자 목록(Supabase)에 보관됩니다. 수신 거부·삭제는 {_CONTACT_HTML}으로 요청하면 즉시 처리합니다.</p>
 <h2>5. 자동 수집 항목</h2>
 <ul>
 <li><b>방문 통계</b> — 익명 카운터(abacus)로 방문 횟수만 집계하며 개인을 식별하지 않습니다.</li>
 <li><b>오류 수집</b> — '버그 제보'와 오류 모니터링(Sentry)은 제보 내용과 브라우저 환경 정보를 수집할 수 있습니다.</li>
-<li><b>광고</b> — Google AdSense가 광고 제공을 위해 쿠키를 사용할 수 있습니다. <a class="text-blue-500" href="https://policies.google.com/technologies/ads?hl=ko" target="_blank" rel="noopener">Google 광고 정책</a>을 참고하세요.</li>
+<li><b>광고</b> — 본 사이트는 제3자 광고 사업자인 Google을 이용합니다. Google을 포함한 제3자 광고 사업자는 쿠키를 사용하여 이용자의 이전 방문 기록을 바탕으로 <b>맞춤형 광고</b>를 게재할 수 있습니다. 이용자는 <a class="text-blue-500" href="https://adssettings.google.com" target="_blank" rel="noopener">Google 광고 설정</a>에서 맞춤 광고를 해제할 수 있으며, <a class="text-blue-500" href="https://www.aboutads.info" target="_blank" rel="noopener">www.aboutads.info</a>에서 제3자 광고 사업자의 쿠키 사용을 거부할 수 있습니다. 자세한 내용은 <a class="text-blue-500" href="https://policies.google.com/technologies/ads?hl=ko" target="_blank" rel="noopener">Google 광고 정책</a>을 참고하세요.</li>
 </ul>
 <h2>6. 보유 기간과 파기</h2>
 <p>계정에 연결된 스크랩·다이어트는 이용자가 삭제하거나 회원 탈퇴(계정 삭제)를 요청할 때까지 보관하며, 요청 시 지체 없이 파기합니다. 뉴스 다이어트 기록은 최근 14일분만 유지됩니다. 로그아웃해도 서버의 계정 데이터는 삭제되지 않으므로, 삭제를 원하면 아래 문의로 요청하세요.</p>
 <h2>7. 이용자의 권리</h2>
-<p>이용자는 자신의 개인정보에 대한 열람·정정·삭제·처리정지를 요청할 수 있습니다. 로그인 상태에서 스크랩을 직접 삭제할 수 있으며, 댓글·계정 삭제나 그 밖의 요청은 '버그 제보' 버튼으로 접수해 주세요.</p>
-<h2>8. 문의</h2>
-<p>개인정보 관련 문의·요청은 상단 '버그 제보' 버튼으로 접수해 주세요.</p>
+<p>이용자는 자신의 개인정보에 대한 열람·정정·삭제·처리정지를 요청할 수 있습니다. 로그인 상태에서 스크랩을 직접 삭제할 수 있으며, 댓글·계정 삭제나 그 밖의 요청은 {_CONTACT_HTML}으로 접수해 주세요.</p>
+<h2>8. 개인정보 보호책임자 및 문의</h2>
+<p>개인정보 보호책임자: <b>{_esc(config.PRIVACY_OFFICER)}</b>. 개인정보 관련 문의·요청은 {_CONTACT_HTML}으로 접수해 주시면 지체 없이 처리합니다.</p>
 <p class="text-neutral-400">시행일: 2026년 7월 22일 · 개정일: 2026년 7월 23일</p>
 """
 
@@ -3340,7 +3349,7 @@ def build_newsletter_page(briefing: dict, out_dir: Path, now: datetime, stamp: s
     if policy:
         body_sections += _sec("🏛️ 오늘의 정책", f'<tr><td style="padding:8px 24px;font-size:13px;color:#55555a;line-height:1.6;"><b style="color:#1c1c1e;">{_esc(policy["title"])}</b> — {_esc(policy["summary"])}</td></tr>')
 
-    html_doc = f"""<!doctype html><html lang="ko"><head><meta charset="utf-8"><title>고른뉴스 레터</title></head>
+    html_doc = f"""<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="robots" content="noindex"><title>고른뉴스 레터</title></head>
 <body style="margin:0;background:#f4f2ee;font-family:'Apple SD Gothic Neo','Noto Sans KR','Malgun Gothic',sans-serif;">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:24px 12px;">
 <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#ffffff;border-radius:14px;overflow:hidden;border:1px solid #e6e2da;">
@@ -3389,7 +3398,9 @@ def build_archive_pages(
 </div>"""
         page = _page(
             title=f"{stamp} 브리핑 아카이브 — {config.SITE_TITLE}",
-            canonical=f"archive/{stamp}/",
+            # 스냅샷은 홈의 시간별 근접 중복본 → noindex,follow로 색인 제외(자기참조 canonical 금지).
+            # 사람은 볼 수 있게 유지하되 구글 "Scaled/중복 콘텐츠" 트리거를 제거한다.
+            canonical="",
             description=f"{stamp} (KST) 시점의 브리핑 스냅샷 — 매시간 저장된 뉴스 이슈 영구 보존본.",
             active="news",
             generated_at=briefing.get("generated_at", ""),
@@ -3403,6 +3414,7 @@ def build_archive_pages(
             site_stamp=stamp_footer,
             asset_prefix="../../",
             og_type="article",
+            noindex=True,
         )
         page_dir = out_dir / "archive" / stamp
         page_dir.mkdir(parents=True, exist_ok=True)
@@ -3478,8 +3490,10 @@ def build_seo_files(
         ("privacy.html", "0.2", "yearly", static_lastmod),
         ("scrapbook.html", "0.2", "monthly", static_lastmod),
         ("archive/", "0.5", "hourly", lastmod),
-    ] + [(f"archive/{s}/", "0.6", "monthly", f"{s[:10]}T{s[11:13]}:00:00Z" if len(s)==13 else f"{s}T00:00:00Z" if len(s)==10 else lastmod) for s in (archive_stamps or [])]
-    
+    ]
+    # 개별 스냅샷(archive/<stamp>/)은 noindex 근접 중복본이므로 sitemap에 넣지 않는다.
+    # (archive/ 목록 페이지만 색인 대상으로 유지 → 중복 URL·doorway 신호 제거)
+
     # Task 6: category RSS feeds
     items_by_cat = {}
     items = []
