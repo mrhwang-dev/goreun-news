@@ -51,6 +51,9 @@ jobs:
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          # LLM 라벨링 스위치. Actions 변수 ENABLE_LLM_LABELING=1 로 켜면 Gemini 라벨링,
+          # 미설정(빈 값)이면 무-API 알고리즘 모드. 실패 시 자동으로 알고리즘 폴백.
+          ENABLE_LLM_LABELING: ${{ vars.ENABLE_LLM_LABELING }}
           BRIEFING_MODEL: ${{ vars.BRIEFING_MODEL }}
           NEWSLETTER_FORM_ACTION: ${{ vars.NEWSLETTER_FORM_ACTION }}
           NEWSLETTER_FORM_ENTRY: ${{ vars.NEWSLETTER_FORM_ENTRY }}
