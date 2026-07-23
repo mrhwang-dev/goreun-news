@@ -823,22 +823,71 @@ document.querySelectorAll(".scrap-btn").forEach(function (btn) {
   });
 });
 
-// ── 공유 (모바일: OS 공유 시트 / 데스크톱: 클립보드 복사 + 토스트) ──
+// ── 공유: '공유' 버튼 → 이미지/링크 선택 시트 → OS 공유 시트(인스타 스토리·카톡·페북·메시지) ──
+var _shareCtx = null;
+function openShareSheet(btn) {
+  _shareCtx = {
+    card: btn.closest("article"),
+    url: btn.dataset.url || (location.origin + location.pathname + (btn.dataset.anchor ? "#" + btn.dataset.anchor : "")),
+    title: btn.dataset.title || "고른뉴스",
+    text: btn.dataset.text || ""
+  };
+  var sheet = document.getElementById("share-sheet");
+  if (sheet) { sheet.hidden = false; var f = document.getElementById("share-image"); if (f) f.focus(); }
+  else shareLink();  // 시트 없으면 바로 링크 공유
+}
+function closeShareSheet() { var s = document.getElementById("share-sheet"); if (s) s.hidden = true; }
+function shareLink() {
+  closeShareSheet();
+  if (!_shareCtx) return;
+  var c = _shareCtx;
+  if (navigator.share) {
+    navigator.share({ title: c.title, text: c.text, url: c.url }).catch(function () {});
+  } else if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(c.url).then(
+      function () { toast("링크가 복사되었습니다"); },
+      function () { toast("복사에 실패했습니다"); }
+    );
+  } else { toast("이 브라우저는 공유를 지원하지 않아요"); }
+}
+function shareImage() {
+  closeShareSheet();
+  if (!_shareCtx || !_shareCtx.card) return;
+  var card = _shareCtx.card;
+  toast("이미지 생성 중…");
+  loadHtml2Canvas().then(function () {
+    var node = buildShareCard(card);
+    document.body.appendChild(node);
+    return window.html2canvas(node, { width: 1080, height: 1080, scale: 1, backgroundColor: "#faf9f7", useCORS: true })
+      .then(function (canvas) {
+        node.remove();
+        canvas.toBlob(function (blob) {
+          if (!blob) { toast("이미지 생성에 실패했습니다"); return; }
+          var file = new File([blob], "goreun-news.png", { type: "image/png" });
+          // 파일만 공유 → OS 공유 시트에서 인스타 스토리·카톡·페북·메시지 선택(text 없이 = 스토리 인식 향상)
+          if (navigator.canShare && navigator.canShare({ files: [file] })) {
+            navigator.share({ files: [file] })
+              .then(function () { toast("공유했습니다"); })
+              .catch(function (err) { if (!err || err.name !== "AbortError") saveImageBlob(blob); });
+          } else {
+            saveImageBlob(blob);  // 미지원(주로 데스크톱) → 이미지 저장
+          }
+        }, "image/png");
+      });
+  }).catch(function () { toast("이미지 생성에 실패했습니다"); });
+}
 document.querySelectorAll(".share-btn").forEach(function (btn) {
-  btn.addEventListener("click", function () {
-    var url = btn.dataset.url || (location.origin + location.pathname +
-      (btn.dataset.anchor ? "#" + btn.dataset.anchor : ""));
-    if (navigator.share) {
-      navigator.share({ title: btn.dataset.title, text: btn.dataset.text, url: url })
-        .catch(function () {});
-    } else if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(url).then(
-        function () { toast("링크가 복사되었습니다"); },
-        function () { toast("복사에 실패했습니다"); }
-      );
-    }
-  });
+  btn.addEventListener("click", function () { openShareSheet(btn); });
 });
+(function () {
+  var img = document.getElementById("share-image"), lnk = document.getElementById("share-link"),
+      cls = document.getElementById("share-close"), sheet = document.getElementById("share-sheet");
+  if (img) img.addEventListener("click", shareImage);
+  if (lnk) lnk.addEventListener("click", shareLink);
+  if (cls) cls.addEventListener("click", closeShareSheet);
+  if (sheet) sheet.addEventListener("click", function (e) { if (e.target === sheet) closeShareSheet(); });
+  document.addEventListener("keydown", function (e) { if (e.key === "Escape" && sheet && !sheet.hidden) closeShareSheet(); });
+})();
 
 
 // ── 검색 단축키 표시: OS에 따라 ⌘K / Ctrl+K ──
@@ -1057,35 +1106,7 @@ function buildShareCard(card) {
   d.appendChild(top); d.appendChild(bottom);
   return d;
 }
-document.querySelectorAll(".imgsave-btn").forEach(function (btn) {
-  btn.addEventListener("click", function () {
-    var card = btn.closest("article");
-    if (!card) return;
-    toast("이미지 생성 중…");
-    loadHtml2Canvas().then(function () {
-      var node = buildShareCard(card);
-      document.body.appendChild(node);
-      return window.html2canvas(node, { width: 1080, height: 1080, scale: 1, backgroundColor: "#faf9f7" })
-        .then(function (canvas) {
-          node.remove();
-          var h3 = card.querySelector("h3");
-          var title = h3 ? h3.textContent.trim() : "고른뉴스";
-          canvas.toBlob(function (blob) {
-            if (!blob) { toast("이미지 생성에 실패했습니다"); return; }
-            var file = new File([blob], "goreun-news.png", { type: "image/png" });
-            // 모바일: 이미지 파일 공유(인스타 스토리·카톡·메시지 등). 미지원 시 저장.
-            if (navigator.canShare && navigator.canShare({ files: [file] })) {
-              navigator.share({ files: [file], title: title, text: title + " — 고른뉴스" })
-                .then(function () { toast("공유했습니다"); })
-                .catch(function (err) { if (!err || err.name !== "AbortError") saveImageBlob(blob); });
-            } else {
-              saveImageBlob(blob);
-            }
-          }, "image/png");
-        });
-    }).catch(function () { toast("이미지 생성에 실패했습니다"); });
-  });
-});
+// (이미지 공유는 위 통합 '공유' 시트의 shareImage()로 처리)
 function saveImageBlob(blob) {
   var a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
@@ -1269,7 +1290,7 @@ SCRAPBOOK_SCRIPT = """
       rm.addEventListener("click", function () { toggleScrap(s); if (typeof serverScrapDelete === "function") serverScrapDelete(s); render(); });
       top.appendChild(rm);
       card.appendChild(top);
-      card.appendChild(el("h3", "fs-t mt-2 mb-1.5 font-bold text-[15px] leading-snug", s.label));
+      card.appendChild(el("h3", "fs-t mt-2 mb-1.5 font-extrabold text-[17px] leading-snug", s.label));
       card.appendChild(el("p", "fs-p text-sm text-neutral-600 dark:text-neutral-300 mb-2", s.summary));
       var ul = el("ul", "flex flex-col gap-1 border-t border-stone-200 dark:border-neutral-700 pt-2");
       (s.headlines || []).forEach(function (h) {
@@ -1596,6 +1617,21 @@ _SENT_CLS = {
 }
 
 
+def _frame_differs(words: list[dict]) -> bool:
+    """진보·보수 양측이 각자 고유한 프레임 단어를 쓸 때만 '어조가 다르다'로 판정.
+
+    한쪽 진영에만 단어가 있거나 공통어뿐이면 프레임 대비가 없으므로, 프레임 체크
+    (카드 섹션·프레임 페이지)에서 해당 이슈를 다루지 않는다.
+    """
+    sides = set()
+    for w in words or []:
+        side = w.get("side")
+        side = "common" if side == "moderate" else side
+        if side in ("progressive", "conservative") and w.get("word"):
+            sides.add(side)
+    return len(sides) == 2
+
+
 def _frame_network(words: list[dict]) -> str:
     """프레임 단어를 성향별(진보·공통·보수) 좌우 버블로 배치하고 감성 톤으로 색칠."""
     cols: dict[str, list[str]] = {"progressive": [], "common": [], "conservative": []}
@@ -1904,6 +1940,21 @@ def _page(
     </button>
     <p class="text-[11px] text-neutral-400 mt-4 leading-relaxed break-keep">계속하면 <a href="{asset_prefix}privacy.html" class="underline hover:text-blue-600 dark:hover:text-blue-400">개인정보처리방침</a>에 동의하게 됩니다. 이메일·이름과 스크랩·읽은 기사 성향이 계정에 저장됩니다.</p>
     <button type="button" id="login-close" class="mt-3 w-full min-h-[44px] inline-flex items-center justify-center text-xs text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200">닫기</button>
+  </div>
+</div>
+<div id="share-sheet" hidden role="dialog" aria-modal="true" aria-label="공유 방법 선택" class="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 backdrop-blur-xs">
+  <div class="w-full sm:w-[24rem] max-w-full rounded-t-2xl sm:rounded-2xl border border-stone-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 p-4 shadow-2xl">
+    <p class="text-sm font-bold text-center mb-0.5">공유 방법 선택</p>
+    <p class="text-[11px] text-neutral-500 dark:text-neutral-400 text-center mb-3">이미지로 공유할지, 기사 링크로 공유할지 선택하세요</p>
+    <button type="button" id="share-image" class="w-full flex items-center gap-3 rounded-xl border border-stone-200 dark:border-neutral-600 px-4 py-3 mb-2 hover:bg-stone-50 dark:hover:bg-neutral-700 text-left transition-colors">
+      <span class="text-2xl shrink-0">🖼️</span>
+      <span class="min-w-0"><span class="block text-sm font-semibold">이미지로 공유</span><span class="block text-[11px] text-neutral-500 dark:text-neutral-400 break-keep">인스타그램 스토리·카카오톡·페이스북·메시지 등</span></span>
+    </button>
+    <button type="button" id="share-link" class="w-full flex items-center gap-3 rounded-xl border border-stone-200 dark:border-neutral-600 px-4 py-3 hover:bg-stone-50 dark:hover:bg-neutral-700 text-left transition-colors">
+      <span class="text-2xl shrink-0">🔗</span>
+      <span class="min-w-0"><span class="block text-sm font-semibold">기사 링크로 공유</span><span class="block text-[11px] text-neutral-500 dark:text-neutral-400 break-keep">메시지·SNS로 링크 전달 (미지원 시 복사)</span></span>
+    </button>
+    <button type="button" id="share-close" class="mt-3 w-full min-h-[44px] inline-flex items-center justify-center text-xs text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200">닫기</button>
   </div>
 </div>
 <button type="button" id="to-top" hidden aria-label="맨 위로" class="fixed bottom-6 right-5 z-40 w-11 h-11 rounded-full bg-neutral-900 text-stone-50 dark:bg-neutral-100 dark:text-neutral-900 shadow-xl text-lg hover:scale-105 active:scale-95 transition-transform flex items-center justify-center">↑</button>
@@ -2240,7 +2291,7 @@ def _render_issue(issue: dict, index: int, opinions: bool = False) -> str:
         return _highlight_title(title, side_frame_words)
 
     framing_html = ""
-    if framing.get("note"):
+    if framing.get("note") and _frame_differs(frame_words):  # 어조가 실제로 다른 이슈만
         framing_html = f"""<div class="rounded-lg border border-stone-200 dark:border-neutral-700 bg-stone-50 dark:bg-neutral-900/60 p-3 mb-3">
   <p class="text-[11px] font-bold mb-1">🔍 프레임 체크 — 같은 사건, 다른 단어 <span class="font-normal text-neutral-400">(참고용 AI 분석)</span></p>
   <p class="text-xs text-neutral-600 dark:text-neutral-300">{_esc(framing["note"])}</p>
@@ -2302,7 +2353,7 @@ def _render_issue(issue: dict, index: int, opinions: bool = False) -> str:
       <button type="button" class="scrap-btn text-base leading-none text-neutral-400 dark:text-neutral-500 hover:text-amber-500" aria-label="스크랩" data-scrap="{scrap_payload}">☆</button>
     </span>
   </div>
-  <h3 class="fs-t mt-2.5 mb-1.5 font-bold text-[15px] leading-snug break-keep [text-wrap:balance]">{_esc(issue["label"])}</h3>
+  <h3 class="fs-t mt-2.5 mb-1.5 font-extrabold text-[17px] sm:text-lg leading-snug break-keep [text-wrap:balance]">{_esc(issue["label"])}</h3>
   <div class="summary-wrap relative cursor-pointer mb-3.5" role="button" tabindex="0" aria-expanded="false" title="클릭하면 전체 요약을 봅니다">
     <p class="fs-p text-sm text-neutral-600 dark:text-neutral-300 break-keep">{_esc(issue["summary"])}</p>
     <span class="fade"></span>
@@ -2316,8 +2367,7 @@ def _render_issue(issue: dict, index: int, opinions: bool = False) -> str:
           매체별 헤드라인 {len(heads)}건 <span class="tri">▾</span>
         </summary>
       </details>
-      <button type="button" class="share-btn shrink-0 ml-auto rounded-lg border border-stone-200 dark:border-neutral-600 px-3 py-1.5 text-xs text-neutral-500 dark:text-neutral-400 hover:text-blue-600 hover:border-blue-500" data-anchor="{anchor}"{f' data-url="{_esc(_SHARE_BASE)}#{anchor}"' if _SHARE_BASE else ""} data-title="{_esc(issue["label"])}" data-text="{_esc(issue["summary"])}" title="이 이슈의 링크를 공유합니다">🔗 링크 공유</button>
-      <button type="button" class="imgsave-btn shrink-0 rounded-lg border border-stone-200 dark:border-neutral-600 px-3 py-1.5 text-xs text-neutral-500 dark:text-neutral-400 hover:text-blue-600 hover:border-blue-500" title="이슈를 정사각 카드 이미지로 만들어 공유합니다 (인스타 스토리·카톡 등, 미지원 시 저장)">🖼️ 이미지 공유</button>
+      <button type="button" class="share-btn shrink-0 ml-auto rounded-lg border border-stone-200 dark:border-neutral-600 px-3 py-1.5 text-xs text-neutral-500 dark:text-neutral-400 hover:text-blue-600 hover:border-blue-500" data-anchor="{anchor}"{f' data-url="{_esc(_SHARE_BASE)}#{anchor}"' if _SHARE_BASE else ""} data-title="{_esc(issue["label"])}" data-text="{_esc(issue["summary"])}" title="이미지 또는 기사 링크로 공유">📤 공유</button>
     </div>
     <div class="headlines-body mt-3" hidden>
       {timeline_html}
@@ -2852,9 +2902,9 @@ def build_frame_page(
         cards = []
         for i, issue in issues:
             framing = issue.get("framing") or {}
-            if not framing.get("note"):
-                continue
             words = framing.get("words") or []
+            if not framing.get("note") or not _frame_differs(words):  # 어조가 실제로 다른 이슈만
+                continue
             # 표시 기준(최초 목격 일시)과 정렬 기준을 일치시킨다
             ordered_heads = sorted(
                 issue.get("headlines", []),
