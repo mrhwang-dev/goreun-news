@@ -1946,6 +1946,42 @@ def _render_blindspot(blindspot: dict | None) -> str:
 </section>"""
 
 
+def _render_blindspot_nudge(blindspot: dict | None) -> str:
+    """일반 피드 중간에 삽입하는 블라인드스팟 넛지 카드.
+
+    반대 진영이 놓친 이슈를 블러+호기심 갭으로 노출하고, 사용자가 직접 클릭
+    (인지적 마찰)해야 드러나게 해 부메랑 효과를 피하고 숙고(시스템2)를 유도한다.
+    순수 CSS 체크박스 토글이라 JS·CSP 이슈가 없다.
+    """
+    if not blindspot:
+        return ""
+    cands = []
+    for key, missing, covering in (
+        ("progressive_missing", "진보", "보수"),   # 진보 매체가 놓침 = 보수만 보도
+        ("conservative_missing", "보수", "진보"),
+    ):
+        lst = blindspot.get(key) or []
+        if lst:
+            cands.append((missing, covering, lst[0]))
+    if not cands:
+        return ""
+    missing, covering, entry = max(cands, key=lambda c: c[2].get("outlet_count", 0))
+    n = entry.get("outlet_count", 0)
+    label = entry.get("label", "")
+    if not label or n < 2:
+        return ""
+    return f"""<div class="col-span-full">
+  <style>.bs-nudge input:checked~.bs-reveal{{filter:none;pointer-events:auto}}.bs-nudge input:checked~.bs-cta{{display:none}}.bs-reveal{{filter:blur(7px);pointer-events:none;transition:filter .35s;user-select:none}}</style>
+  <div class="bs-nudge rounded-xl border border-amber-300 dark:border-amber-500/40 bg-amber-50/70 dark:bg-amber-500/10 p-4">
+    <input type="checkbox" id="bs-nudge" class="hidden" aria-hidden="true">
+    <p class="text-xs font-bold text-amber-700 dark:text-amber-400 mb-1">🕳️ 시야의 사각지대</p>
+    <p class="text-sm text-neutral-700 dark:text-neutral-200 break-keep">{covering} 성향 매체 <b>{n}곳</b>이 보도 중이지만, {missing} 성향 매체에서는 다루지 않은 이슈가 있어요.</p>
+    <label for="bs-nudge" class="bs-cta inline-flex items-center gap-1.5 mt-3 cursor-pointer rounded-lg border border-amber-400 dark:border-amber-500/50 px-3 py-1.5 text-xs font-medium text-amber-700 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-500/20 select-none">👁 가려진 이슈 확인하기</label>
+    <a href="blindspot.html" class="bs-reveal block mt-3 text-[15px] font-bold leading-snug text-neutral-900 dark:text-neutral-100 hover:text-blue-600 dark:hover:text-blue-400 break-keep">{_esc(label)} <span class="text-xs font-normal text-blue-600 dark:text-blue-400 whitespace-nowrap">→ 블라인드스팟에서 자세히</span></a>
+  </div>
+</div>"""
+
+
 def _render_sidebar(policy: list[dict], blindspot: dict | None = None) -> str:
     items = "".join(
         f"""<div class="policy-item border-t border-stone-200 dark:border-neutral-700 py-3 first:border-0 first:pt-0 last:pb-0">
@@ -2066,6 +2102,8 @@ def build(
         label = f"{cat} 🔥" if cat == hottest else cat
         tabs.append(_tab(label, counts[cat], "cat", cat, False, dot))
 
+    nudge_html = _render_blindspot_nudge(briefing.get("blindspot"))
+    nudge_done = False
     cards = []
     for i, issue in enumerate(issues):
         card = _render_issue(issue, i)
@@ -2077,6 +2115,11 @@ def build(
         cards.append(card)
         if i == 3:  # 4번째와 5번째 카드 사이 광고
             cards.append(f'<div class="col-span-full">{ad_slot("feed-1")}</div>')
+        if i == 4 and nudge_html:  # 피드 중간에 블라인드스팟 넛지 삽입
+            cards.append(nudge_html)
+            nudge_done = True
+    if nudge_html and not nudge_done:  # 이슈가 5개 미만이면 말미에 붙인다
+        cards.append(nudge_html)
     cards.append('<div id="feed-sentinel" class="col-span-full h-1" aria-hidden="true"></div>')
     # 뉴스는 최신 스냅샷을 표시 — 이전일은 하단 날짜 스트립으로 해당일 스냅샷 이동
     dates = _dates_of(snapshots or [])

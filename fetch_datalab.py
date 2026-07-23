@@ -12,8 +12,8 @@ import os
 import urllib.request
 from datetime import datetime, timedelta, timezone
 
-# 데이터랩(통합 검색어 트렌드)은 검색 API와 달리 클래식 도메인 openapi.naver.com 사용.
-ENDPOINT = "https://openapi.naver.com/v1/datalab/search"
+# 데이터랩(통합 검색어 트렌드) NCP 게이트웨이. 검색(naverapihub)과 또 다른 게이트웨이(naveropenapi).
+ENDPOINT = "https://naveropenapi.apigw.ntruss.com/datalab/v1/search"
 KST = timezone(timedelta(hours=9))
 GROUP_MAX = 5   # 요청당 키워드 그룹 상한 (데이터랩 제약)
 LOOKBACK_DAYS = 14
@@ -60,12 +60,8 @@ def fetch_trends(keywords: list[str]) -> dict[str, dict]:
                 data=body,
                 method="POST",
                 headers={
-                    # 엔드포인트가 게이트웨이(NCP)/클래식(openapi) 중 어느 인증을
-                    # 검증하든 통과하도록 두 방식 헤더를 함께 싣는다.
-                    "X-Naver-Client-Id": cid,
-                    "X-Naver-Client-Secret": csec,
-                    "X-NCP-APIGW-API-KEY-ID": cid,
-                    "X-NCP-APIGW-API-KEY": csec,
+                    "X-NCP-APIGW-API-KEY-ID": cid,      # Client ID
+                    "X-NCP-APIGW-API-KEY": csec,        # Client Secret
                     "Content-Type": "application/json",
                 },
             )
