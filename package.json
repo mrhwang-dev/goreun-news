@@ -13,6 +13,7 @@
     "app:assets": "npx @capacitor/assets generate --assetPath assets/app --iconBackgroundColor '#2563eb' --iconBackgroundColorDark '#1e293b' --splashBackgroundColor '#faf9f7' --splashBackgroundColorDark '#0a0a0a'"
   },
   "dependencies": {
+    "@capacitor-community/admob": "^8.0.0",
     "@capacitor/android": "^8.4.2",
     "@capacitor/app": "^8.1.1",
     "@capacitor/core": "^8.4.2",

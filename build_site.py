@@ -47,7 +47,10 @@ def ad_slot(unit_id: str) -> str:
     """광고 슬롯 모듈 — CLS 방지를 위해 min-h 고정 + 로드 전 스켈레톤 배경.
 
     ADSENSE_CLIENT_ID 설정 시 구글 애드센스 코드를 자동 게재합니다.
+    앱 빌드(_APP_BUILD)에선 웹 AdSense 대신 네이티브 AdMob 배너를 쓰므로 미출력.
     """
+    if _APP_BUILD:
+        return ""
     if config.ADSENSE_CLIENT_ID:
         return f"""<div class="ad-unit relative overflow-hidden rounded-xl border border-stone-200 dark:border-neutral-700 min-h-[250px] flex items-center justify-center bg-stone-50 dark:bg-neutral-900" data-ad-unit="{unit_id}">
   <ins class="adsbygoogle"
@@ -1470,6 +1473,24 @@ NATIVE_SCRIPT = """/* 고른뉴스 네이티브 브리지 (Capacitor) — 자동
     setTimeout(function () { try { P.SplashScreen.hide(); } catch (e) {} }, 200);
   }
 
+  // ── AdMob 배너 (앱 전용; 웹 AdSense 대체) ──────────────
+  if (P.AdMob) {
+    try {
+      P.AdMob.addListener("bannerAdSizeChanged", function (info) {
+        var h = (info && info.height) || 0;   // 배너 높이만큼 본문 하단 여백 확보(가림 방지)
+        document.body.style.paddingBottom = h > 0 ? (h + "px") : "";
+      });
+      P.AdMob.initialize().then(function () {
+        return P.AdMob.showBanner({
+          adId: "__ADMOB_BANNER__",
+          adSize: "ADAPTIVE_BANNER",
+          position: "BOTTOM_CENTER",
+          margin: 0
+        });
+      }).catch(function () {});
+    } catch (e) {}
+  }
+
   // ── briefing.json 오프라인 캐시 ───────────────────────
   function fetchJSON(url) {
     if (P.CapacitorHttp && P.CapacitorHttp.request) {
@@ -1829,7 +1850,7 @@ def _page(
     if config.GOOGLE_SITE_VERIFICATION:
         gsc_tag = f'<meta name="google-site-verification" content="{_esc(config.GOOGLE_SITE_VERIFICATION)}">\n'
     adsense_script = ""
-    if config.ADSENSE_CLIENT_ID:
+    if config.ADSENSE_CLIENT_ID and not _APP_BUILD:
         adsense_script = (
             f'<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client={_esc(config.ADSENSE_CLIENT_ID)}" '
             'crossorigin="anonymous"></script>'
@@ -2680,7 +2701,9 @@ def build(
     )
     # Capacitor 네이티브 브리지 (iOS/Android 앱 전용, 웹에서는 no-op)
     (out_dir / "native.js").write_text(
-        NATIVE_SCRIPT.replace("__SITE_ORIGIN__", f"https://{config.SITE_DOMAIN}"),
+        NATIVE_SCRIPT.replace("__SITE_ORIGIN__", f"https://{config.SITE_DOMAIN}").replace(
+            "__ADMOB_BANNER__", config.ADMOB_BANNER_ID
+        ),
         encoding="utf-8",
     )
 

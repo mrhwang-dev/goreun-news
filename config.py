@@ -231,3 +231,8 @@ SPELLCHECK_RULE_BACKEND = os.environ.get("SPELLCHECK_RULE_BACKEND", "auto")
 SPELLCHECK_MODEL_BACKEND = os.environ.get("SPELLCHECK_MODEL_BACKEND", "llm")
 # 과교정·할루시네이션 방어: 교정 전후 글자 수 변화 허용 비율(초과 시 2차 폐기)
 SPELLCHECK_MAX_DELTA = float(os.environ.get("SPELLCHECK_MAX_DELTA", "0.15"))
+
+# ── AdMob (앱 전용 광고) ─────────────────────────────────────────────
+# 웹은 AdSense, 앱은 AdMob(AdSense는 앱 내 정책 위반). 앱 빌드에선 AdSense 미주입.
+ADMOB_APP_ID = os.environ.get("ADMOB_APP_ID", "ca-app-pub-7020354248439175~5687081104")
+ADMOB_BANNER_ID = os.environ.get("ADMOB_BANNER_ID", "ca-app-pub-7020354248439175/1228961341")

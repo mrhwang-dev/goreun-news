@@ -17,6 +17,7 @@ import { StatusBar } from '@capacitor/status-bar';
 import { App } from '@capacitor/app';
 import { Preferences } from '@capacitor/preferences';
 import { SplashScreen } from '@capacitor/splash-screen';
+import { AdMob } from '@capacitor-community/admob';
 
 // import 만으로도 Plugins 가 채워지지만, 트리셰이킹 방지 + 명시적 노출을 위해 직접 할당한다.
 const C = (typeof window !== 'undefined' && window.Capacitor) || Capacitor;
@@ -29,5 +30,6 @@ Object.assign(C.Plugins, {
   App,
   Preferences,
   SplashScreen,
+  AdMob,
 });
 if (typeof window !== 'undefined') window.Capacitor = C;
