@@ -16,3 +16,7 @@ node_modules/
 data/goreun.db
 data/goreun.db-wal
 data/goreun.db-shm
+
+# Firebase 서비스 계정 키 — 절대 커밋 금지
+*firebase-adminsdk*.json
+serviceAccount*.json

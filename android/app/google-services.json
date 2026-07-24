@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "583763311572",
+    "project_id": "grnews-c0676",
+    "storage_bucket": "grnews-c0676.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:583763311572:android:666f0ad3fed6d284fbf441",
+        "android_client_info": {
+          "package_name": "cloud.goreunnews.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC3C56gI1op8SO6araWbn_DxynONvZB9Jc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
